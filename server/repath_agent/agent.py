@@ -1,3 +1,4 @@
+from google.adk.apps import App
 from google.adk.agents import Agent
 from google.adk.models import Gemini
 from .tools import (
@@ -81,4 +82,10 @@ requirement has been satisfied when it has not.
         update_recovery_case,
         load_recovery_case,
     ],
+)
+
+
+app = App(
+    name="repath_agent",
+    root_agent=root_agent,
 )
