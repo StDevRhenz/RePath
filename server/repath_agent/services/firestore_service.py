@@ -20,6 +20,7 @@ def create_case(title: str) -> dict:
         "submitted_documents": [],
         "missing_documents": [],
         "recovery_steps": [],
+        "documents": [],
         "created_at": datetime.now(timezone.utc),
         "updated_at": datetime.now(timezone.utc),
     }
@@ -57,3 +58,19 @@ def update_case(case_id: str, updates: dict) -> dict | None:
     updated_document = case_ref.get()
 
     return updated_document.to_dict()
+
+
+def add_case_document(case_id: str, document: dict):
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    existing_case = case_ref.get()
+
+    if not existing_case.exists:
+        return None
+
+    case_ref.update({
+        "documents": firestore.ArrayUnion([document]),
+        "updated_at": datetime.now(timezone.utc),
+    })
+
+    return document

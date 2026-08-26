@@ -4,6 +4,8 @@ import { Check, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RecoveryCase } from "@/services/caseApi";
 import { SectionHeading } from "@/components/recovery/workspace/SectionHeading";
+import { uploadCaseDocument } from "@/services/documentApi";
+
 
 type DocumentsSectionProps = {
   recoveryCase: RecoveryCase;
@@ -23,7 +25,11 @@ export function DocumentsSection({
     Record<string, boolean>
   >({});
 
-  function handleDocumentSelect(
+  const [uploadingDocuments, setUploadingDocuments] = useState<
+    Record<string, boolean>
+  >({});
+
+  async function handleDocumentSelect(
     documentName: string,
     file: File | undefined
   ) {
@@ -40,6 +46,34 @@ export function DocumentsSection({
       ...current,
       [documentName]: false,
     }));
+
+    setUploadingDocuments((current) => ({
+      ...current,
+      [documentName]: true,
+    }));
+
+    try {
+      const result = await uploadCaseDocument(
+        recoveryCase.case_id,
+        documentName,
+        file
+      );
+
+      console.log("Uploaded document:", result);
+    } catch (error) {
+      console.error(error);
+
+      setSelectedDocuments((current) => {
+        const updated = { ...current };
+        delete updated[documentName];
+        return updated;
+      });
+    } finally {
+      setUploadingDocuments((current) => ({
+        ...current,
+        [documentName]: false,
+      }));
+    }
   }
 
   function handleDocumentRemove(documentName: string) {
@@ -96,7 +130,8 @@ export function DocumentsSection({
           recoveryCase.missing_documents.map((document) => {
             const selectedFile = selectedDocuments[document];
             const isValidated = validatedDocuments[document];
-
+            const isUploading = uploadingDocuments[document];
+            
             return (
               <div key={document} className="py-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -138,9 +173,11 @@ export function DocumentsSection({
                     >
                       {isValidated
                         ? "Ready"
-                        : selectedFile
-                          ? "Selected"
-                          : "Missing"}
+                        : isUploading
+                          ? "Uploading..."
+                          : selectedFile
+                            ? "Uploaded"
+                            : "Missing"}
                     </span>
 
                     <label className="cursor-pointer">

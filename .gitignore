@@ -11,3 +11,10 @@ __pycache__/
 # Node
 client/node_modules/
 client/dist/
+
+server/uploads
+REPATH_PROJECT_CHECKPOINT.md
+
+server/.env
+server/.venv/
+server/uploads/

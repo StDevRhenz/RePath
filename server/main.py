@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routes.cases import router as cases_router
 from routes.agent import router as agent_router
+from routes.documents import router as documents_router
 
 app = FastAPI(
     title="RePath API",
@@ -24,6 +25,7 @@ app.add_middleware(
 
 app.include_router(cases_router)
 app.include_router(agent_router)
+app.include_router(documents_router)
 
 @app.get("/")
 def root():
