@@ -1,3 +1,106 @@
+from .services.firestore_service import (
+    create_case,
+    get_case,
+    update_case,
+)
+
+
+
+def create_recovery_case(title: str) -> dict:
+    """
+    Create a persistent recovery case.
+
+    Args:
+        title: A short descriptive title for the application case.
+
+    Returns:
+        The newly created recovery case.
+    """
+
+    case = create_case(title)
+
+    return {
+        "status": "case_created",
+        "case_id": case["case_id"],
+        "title": case["title"],
+        "case_status": case["status"],
+    }
+
+
+def update_recovery_case(
+    case_id: str,
+    status: str,
+    missing_documents: list[str],
+    recovery_steps: list[str],
+) -> dict:
+    """
+    Save the current recovery progress to an existing case.
+
+    Args:
+        case_id: The ID of the recovery case.
+        status: Current state of the recovery workflow.
+        missing_documents: Documents still required from the user.
+        recovery_steps: Actions required to recover the application.
+
+    Returns:
+        The updated recovery case information.
+    """
+
+    updated_case = update_case(
+        case_id,
+        {
+            "status": status,
+            "missing_documents": missing_documents,
+            "recovery_steps": recovery_steps,
+        },
+    )
+
+    if updated_case is None:
+        return {
+            "status": "error",
+            "message": "Recovery case not found.",
+        }
+
+    return {
+        "status": "case_updated",
+        "case_id": case_id,
+        "case_status": updated_case["status"],
+        "missing_documents": updated_case["missing_documents"],
+        "recovery_steps": updated_case["recovery_steps"],
+    }
+
+
+def load_recovery_case(case_id: str) -> dict:
+    """
+    Load a previously saved recovery case.
+
+    Args:
+        case_id: The ID of the recovery case to retrieve.
+
+    Returns:
+        The persisted recovery case.
+    """
+
+    case = get_case(case_id)
+
+    if case is None:
+        return {
+            "status": "error",
+            "message": "Recovery case not found.",
+        }
+
+    return {
+        "status": "case_loaded",
+        "case_id": case["case_id"],
+        "title": case["title"],
+        "case_status": case["status"],
+        "requirements": case["requirements"],
+        "submitted_documents": case["submitted_documents"],
+        "missing_documents": case["missing_documents"],
+        "recovery_steps": case["recovery_steps"],
+    }
+
+
 def analyze_rejection(rejection_text: str) -> dict:
     """
     Analyze a rejection notice and record the initial

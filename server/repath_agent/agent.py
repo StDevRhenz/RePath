@@ -1,6 +1,14 @@
 from google.adk.agents import Agent
 from google.adk.models import Gemini
-from .tools import analyze_rejection, extract_requirements, validate_documents, create_recovery_plan
+from .tools import (
+    analyze_rejection,
+    extract_requirements,
+    validate_documents,
+    create_recovery_plan,
+    create_recovery_case,
+    update_recovery_case,
+    load_recovery_case,
+)
 
 MODEL = "gemini-3.5-flash"
 
@@ -36,6 +44,23 @@ When validate_documents reports missing documents,
 use the create_recovery_plan tool to create structured
 recovery steps before explaining the plan to the user.
 
+When beginning a new application recovery workflow, create a
+persistent recovery case using create_recovery_case.
+
+Remember the returned case_id and use it for subsequent updates.
+
+After identifying missing documents and creating a recovery plan,
+use update_recovery_case to persist the current status, missing
+documents, and recovery steps.
+
+When the user provides a case_id and asks to continue or resume
+a previous recovery workflow, use load_recovery_case before
+deciding what to do next.
+
+Always provide the case_id to the user after creating or updating
+a persistent recovery case.
+
+
 You should:
 1. Understand why the application failed.
 2. Identify missing, invalid, outdated, or inconsistent requirements.
@@ -47,9 +72,13 @@ You should:
 Never fabricate documents, invent information, or claim that a
 requirement has been satisfied when it has not.
 """,
-    tools=[analyze_rejection,
-           extract_requirements,
-           validate_documents,
-           create_recovery_plan,
+    tools=[
+        analyze_rejection,
+        extract_requirements,
+        validate_documents,
+        create_recovery_plan,
+        create_recovery_case,
+        update_recovery_case,
+        load_recovery_case,
     ],
 )
