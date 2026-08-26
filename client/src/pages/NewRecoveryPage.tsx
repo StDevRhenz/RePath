@@ -5,22 +5,86 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AgentApiError,
+  sendAgentMessage,
+} from "@/services/agentApi";
+import { RecoveryConversation } from "@/components/recovery/RecoveryConversation";
 
 export function NewRecoveryPage() {
   const navigate = useNavigate();
   const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [agentResponse, setAgentResponse] = useState("");
+  const [initialMessage, setInitialMessage] = useState("");
 
-  function handleContinue() {
+
+  async function handleContinue() {
     const trimmedDescription = description.trim();
 
     if (!trimmedDescription) {
       return;
     }
 
-    console.log("Recovery description:", trimmedDescription);
+    try {
+      setLoading(true);
+      setError("");
 
-    // Next step:
-    // Send this to our RePath Agent API.
+      const result = await sendAgentMessage(trimmedDescription);
+
+      setInitialMessage(trimmedDescription);
+      setSessionId(result.session_id);
+      setAgentResponse(result.response);
+
+      console.log("SESSION:", result.session_id);
+      console.log("AGENT:", result.response);
+      } catch (error) {
+        console.error(error);
+
+        if (error instanceof AgentApiError && error.status === 429) {
+          setError(
+            "RePath is temporarily at its AI usage limit. Please try again shortly."
+          );
+        } else {
+          setError(
+            "RePath couldn't process your request. Please try again."
+          );
+        }
+      } finally {
+        setLoading(false);
+      }
+  }
+
+
+  if (sessionId && agentResponse) {
+    return (
+      <main className="min-h-screen bg-[#fafafa] text-zinc-950">
+        <header className="border-b border-zinc-200/80 bg-white">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 lg:px-8">
+            <button
+              onClick={() => navigate("/")}
+              className="text-xl font-normal tracking-tight"
+            >
+              RePath
+            </button>
+
+            <span className="text-sm font-light text-zinc-500">
+              Recovery Agent
+            </span>
+          </div>
+        </header>
+
+        <section className="px-6 py-12">
+          <RecoveryConversation
+            initialUserMessage={initialMessage}
+            initialAgentMessage={agentResponse}
+            initialSessionId={sessionId}
+          />
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -84,14 +148,20 @@ export function NewRecoveryPage() {
               className="min-h-40 resize-none bg-white font-light leading-6"
             />
 
+            {error && (
+              <p className="mt-4 text-sm font-light text-red-600">
+                {error}
+              </p>
+            )}
+
             <div className="mt-5 flex justify-end">
               <Button
                 onClick={handleContinue}
-                disabled={!description.trim()}
+                disabled={!description.trim() || loading}
                 className="h-11 px-5 font-normal"
               >
-                Continue
-                <ArrowRight className="size-4" />
+                {loading ? "Analyzing..." : "Continue"}
+                {!loading && <ArrowRight className="size-4" />}
               </Button>
             </div>
           </div>
