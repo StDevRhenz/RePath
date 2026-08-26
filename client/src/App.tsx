@@ -1,10 +1,20 @@
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+
+import { LandingPage } from "@/pages/LandingPage";
+import { NewRecoveryPage } from "@/pages/NewRecoveryPage";
+import { ResumeCasePage } from "@/pages/ResumeCasePage";
+import { RecoveryWorkspacePage } from "@/pages/RecoveryWorkspacePage";
+
 function App() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950">
-      <h1 className="text-5xl font-bold text-white">
-        RePath
-      </h1>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/new" element={<NewRecoveryPage />} />
+        <Route path="/resume" element={<ResumeCasePage />} />
+        <Route path="/cases/:caseId" element={<RecoveryWorkspacePage />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
