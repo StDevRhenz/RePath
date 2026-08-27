@@ -21,6 +21,7 @@ export interface RecoveryCase {
   case_id: string;
   title: string;
   status: string;
+  updated_at?: string | null;
   requirements: string[];
   submitted_documents: string[];
   missing_documents: string[];

@@ -1,296 +1,271 @@
-You are continuing work on my existing RePath project.
+Implement the authenticated My Recoveries dashboard flow for the existing RePath app.
 
-Before changing anything, inspect the repository and current implementation.
+Inspect the current repository first before changing anything.
 
-Do NOT rebuild working features.
-Do NOT modify Gemini model configuration.
-Do NOT consume Gemini requests during implementation/testing.
+Do NOT redesign backend auth.
+Do NOT change Firebase provider configuration.
+Do NOT change Gemini model/config.
+Do NOT call Gemini.
+Do NOT change document validation/final review logic.
+Do NOT change ADK persistence/chat persistence architecture.
 Do NOT commit or push automatically.
-Do NOT redesign the UI.
-Do NOT add demo/presentation content yet.
 
 CURRENT VERIFIED STATE
 
-RePath already has:
+Frontend:
+- Firebase Google login works
+- AuthContext persists auth state across refresh
+- authFetch attaches Firebase Bearer token
+- Google login/logout works
+- hard refresh auth race is fixed
 
-Frontend
-- React + TypeScript + Vite
+Backend:
+- Firebase Admin verifies tokens
+- cases have owner_id / owner_email
+- protected endpoints enforce ownership
+- GET /api/cases returns only the logged-in user’s cases
+- wrong-owner case returns 404
+- no token returns 401
+
+CURRENT UX PROBLEM
+
+The app still feels like a developer tool because users may need to:
+- manually resume using raw Case ID
+- see technical case IDs
+- navigate through the old /resume flow
+
+GOAL
+
+Change the normal user flow to:
+
+Landing
+→ Continue with Google
+→ My Recoveries dashboard
+→ click a recovery
+→ Recovery Workspace
+
+The raw case_id should remain an internal identifier but should not be part of the normal user-facing experience.
+
+IMPLEMENT
+
+1. MY RECOVERIES PAGE
+
+Create a page/route such as:
+
+/recoveries
+
+It should fetch:
+
+GET /api/cases
+
+using the existing authenticated case API/authFetch path.
+
+Display only the current user’s cases.
+
+Each recovery card/row should show user-friendly information such as:
+- title
+- friendly status label
+- short progress/status text
+- updated date if available
+
+Do NOT prominently display raw case_id.
+
+Clicking a recovery should navigate internally to:
+
+/cases/{case_id}
+
+The case_id can still be used in the route internally.
+
+2. FRIENDLY STATUS COPY
+
+Convert internal statuses to human-readable text.
+
+Examples:
+
+recovering
+→ Recovery in progress
+
+waiting_for_documents
+→ Documents needed
+
+ready_for_review
+→ Ready for review
+
+ready_to_resubmit
+→ Ready for resubmission
+
+Avoid exposing raw snake_case statuses.
+
+3. EMPTY STATE
+
+If the user has no recoveries, show a clean empty state such as:
+
+“No recoveries yet.”
+
+Include a clear primary action:
+“Start a recovery”
+
+which navigates to /new.
+
+Keep copy simple and user-friendly.
+
+4. LANDING PAGE AUTH FLOW
+
+Use existing AuthContext.
+
+If user is signed out:
+- show “Continue with Google” as the main auth action
+- keep the existing product explanation/hero
+
+If user is already signed in:
+- show a primary action such as “My Recoveries”
+- optionally show a small account/logout control
+
+Do not force signed-in users through the Case ID resume page.
+
+5. POST-LOGIN NAVIGATION
+
+After successful Google login:
+- navigate to /recoveries
+
+Do not just log to console.
+
+Preserve clean error handling.
+
+6. START RECOVERY FLOW
+
+Authenticated users should be able to start a new recovery from:
 - Landing
-- New Recovery
-- Resume Case
-- Recovery Workspace
-- Documents lifecycle
-- Agent tab
-- persistent visible chat history
-- mock mode
+- My Recoveries dashboard
 
-Backend
-- FastAPI
-- Firestore
-- Google ADK
-- persistent ADK sessions using DatabaseSessionService + SQLite
-- document upload
-- deterministic validation
+After a new case is created, preserve the existing workspace navigation behavior if already working.
+
+Do not redesign the agent flow.
+
+7. RESUME CASE PAGE
+
+Keep the /resume route only if useful as a fallback/dev compatibility path.
+
+It should no longer be the normal primary CTA.
+
+Do not delete backend case_id support.
+
+8. NAVIGATION
+
+Update normal navigation so authenticated users can move between:
+- My Recoveries
+- Start recovery
+- Logout
+
+Keep it minimal.
+
+Do not introduce a full complex sidebar unless one already exists.
+
+9. USER-FRIENDLY CONTENT
+
+Replace developer-ish visible wording where encountered in this flow.
+
+Examples:
+
+“Case ID”
+→ hide from normal UX
+
+“Resume a case”
+→ “My Recoveries” or remove as primary CTA
+
+“ready_to_resubmit”
+→ “Ready for resubmission”
+
+Keep the RePath tone:
+- calm
+- clear
+- trustworthy
+- professional
+- not overly technical
+
+10. AUTH LOADING STATE
+
+Respect AuthContext loading.
+
+Do not redirect/render the wrong logged-in/logged-out state while Firebase is still restoring auth.
+
+Avoid flashing the signed-out landing UI for authenticated users during initialization if possible.
+
+11. ACCESS BEHAVIOR
+
+If an unauthenticated user tries to open /recoveries:
+- redirect them to the landing/login flow
+
+If an authenticated user opens /recoveries:
+- load only their own cases
+
+Do not change backend ownership behavior.
+
+12. VISUAL STYLE
+
+Keep current RePath visual identity:
+
+- off-white #fafafa
+- near-black text
+- muted indigo accents
+- Geist
+- light/thin typography
+- clean spacing
+- subtle borders
+- Lucide icons
+- no gradients
+- no glow
+- no glassmorphism
+- no flashy AI dashboard style
+
+This task is structural UX, not the final polish pass.
+
+13. DO NOT TOUCH
+
+Do not modify:
+- backend ownership model
+- Firestore schema
+- document lifecycle
 - final review
-- case-aware Agent responses
-- robust error handling
-- 10 MB upload limit
-
-CURRENT GOAL
-
-Make the project production/deployment ready without changing core product behavior.
-
-IMPLEMENT A TARGETED PRODUCTION HARDENING PASS.
-
-1. FRONTEND API CONFIG
-
-Remove hardcoded API URLs such as:
-
-http://127.0.0.1:8000
-
-Use an environment-based frontend API URL:
-
-VITE_API_URL
-
-Create or update:
-client/.env.example
-
-Example:
-
-VITE_API_URL=http://127.0.0.1:8000
-
-Use a clean shared API base configuration if multiple service files currently duplicate the URL.
-
-Do not expose secrets in frontend env.
-
-2. BACKEND CONFIG
-
-Centralize or cleanly load non-secret backend configuration where reasonable.
-
-Support environment values for:
-
-- Google Cloud project id
-- allowed CORS origins
-- max upload size
-- ADK session DB URL
-- upload directory if useful
-
-Existing defaults for local development should remain safe.
-
-Do not require production env just to run locally.
-
-3. CORS
-
-Replace hardcoded-only development CORS setup with env-configurable origins.
-
-Suggested env:
-
-ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-
-Behavior:
-- parse comma-separated origins
-- trim whitespace
-- no wildcard when allow_credentials=True
-- local development should still work
-
-Do not enable overly permissive production CORS.
-
-4. HEALTH ENDPOINT
-
-Add:
-
-GET /health
-
-Return a small response such as:
-
-{
-  "status": "ok",
-  "service": "repath-api"
-}
-
-Do not call Gemini or Firestore from the basic health endpoint unless there is a very strong reason.
-
-5. PRODUCTION STARTUP
-
-Make sure the backend has a production-safe startup command documented.
-
-Development:
-
-uvicorn main:app --reload
-
-Production:
-
-uvicorn main:app --host 0.0.0.0 --port <PORT>
-
-Support cloud-provided PORT environment variable if practical.
-
-Do not use --reload in production.
-
-If a Procfile/render.yaml/etc. already exists, inspect it before modifying.
-
-Do not introduce unnecessary deployment platforms.
-
-6. RUNTIME STORAGE REVIEW
-
-Current local runtime storage includes:
-
-server/uploads/
-server/data/adk_sessions.db
-
-These are local filesystem storage.
-
-Do NOT migrate them to cloud storage in this task.
-
-Instead:
-- keep them configurable where reasonable
-- make sure directories are created safely
-- keep them ignored by Git
-- document that local disk may be ephemeral on cloud hosts
-
-Add comments/documentation indicating that production deployment may need persistent disk or cloud storage later.
-
-7. .GITIGNORE / SECRET HYGIENE
-
-Verify these remain ignored:
-
-.env
-server/.env
-server/.venv/
-server/uploads/
-server/data/
-client/node_modules/
-client/dist/
-
-Do not commit API keys, credentials, service account files, uploaded documents, or SQLite runtime data.
-
-8. ENV EXAMPLES
-
-Update/create env example files.
-
-Backend example should document non-secret config fields only.
-
-Example concepts:
-
-GOOGLE_CLOUD_PROJECT=repath-506704
-ALLOWED_ORIGINS=http://localhost:5173
-MAX_DOCUMENT_UPLOAD_SIZE_BYTES=10485760
-ADK_SESSION_DB_URL=sqlite+aiosqlite:///./data/adk_sessions.db
-
-Do not include real secrets.
-
-Frontend example:
-
-VITE_API_URL=http://127.0.0.1:8000
-
-9. API SERVICE CLEANUP
-
-If multiple frontend service files duplicate API URL constants, centralize them minimally.
-
-For example:
-src/lib/apiConfig.ts
-or another clean existing location.
-
-Do not over-refactor.
-
-10. BACKEND ERROR SAFETY
-
-Review production-facing responses.
-
-Ensure:
-- stack traces are not returned to frontend
-- internal exception details stay server-side
-- useful 400/404/413/429/500 responses remain
-
-Do not remove useful existing error messages.
-
-11. LOGGING
-
-Keep logging simple.
-
-Ensure:
-- no secrets
-- no file contents
-- no full private documents
-- no API keys
-
-Do not introduce a heavy logging framework unless already present.
-
-12. FIRESTORE / GOOGLE CONFIG
-
-Do not change database schema.
-
-Do not change authentication architecture.
-
-Use environment project configuration instead of unnecessary hardcoding if it can be done safely without breaking local development.
-
-13. FRONTEND BUILD
-
-Ensure production frontend build works with environment-based API URL.
-
-Do not change routing behavior.
-
-14. DOCUMENTATION
-
-Add a concise deployment/dev configuration note in an existing README or appropriate project markdown only if one exists and it can be done without rewriting the whole documentation.
-
-Document:
-
-Local frontend:
-npm run dev
-
-Local backend:
-uvicorn main:app --reload
-
-Production frontend:
-npm run build
-
-Production backend:
-uvicorn main:app --host 0.0.0.0 --port $PORT
-
-Required non-secret env configuration.
-
-Mention that:
-- uploads are local
-- SQLite ADK session storage is local
-- persistent cloud deployment may require persistent disk later
-
-15. DO NOT TOUCH
-
-Do NOT modify:
-- document validation logic
-- final review logic
-- recovery status logic
-- Agent instructions/tools
+- Agent tools/instructions
 - Gemini model
-- chat persistence design
-- UI design/theme
-- authentication
-- demo documents
-- presentation/video assets
+- persistent ADK sessions
+- visible chat history architecture
+- demo/presentation assets
 
-16. VERIFICATION
+14. VERIFICATION
+
+Do not call Gemini.
 
 Run:
-- Python compile checks
-- backend startup/import check if possible
 - frontend build
 - lint if configured
 - git diff --check
 
-Do not send Gemini requests.
+Manual QA targets:
+- signed-out landing shows Google login
+- login redirects to /recoveries
+- /recoveries lists only owned cases
+- case cards use friendly labels
+- clicking a case opens workspace
+- raw Case ID is not prominently shown
+- empty state works
+- start recovery works
+- logout works
+- hard refresh on /recoveries remains authenticated
+- hard refresh on owned workspace still works
+- unauthenticated /recoveries redirects appropriately
 
 WHEN FINISHED
 
 Do not commit or push.
 
-Give me:
+Report:
 1. files changed
-2. frontend env/config behavior
-3. backend env/config behavior
-4. CORS behavior
-5. health endpoint
-6. production startup command
-7. runtime storage limitations
-8. security/gitignore checks
-9. exact manual QA steps
-10. confirm no Gemini requests were sent
+2. new route(s)
+3. dashboard behavior
+4. login redirect behavior
+5. how statuses are converted to friendly labels
+6. whether /resume was kept and how
+7. exact manual QA steps
+8. confirm no Gemini requests were sent

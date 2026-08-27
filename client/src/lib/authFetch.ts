@@ -1,38 +1,51 @@
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
-let authInitializationPromise: Promise<void> | null = null;
+type AuthWithStateReady = typeof auth & {
+  authStateReady?: () => Promise<void>;
+};
 
-function waitForAuthInitialization() {
-  if (authInitializationPromise) {
-    return authInitializationPromise;
+export class AuthRequiredError extends Error {
+  constructor() {
+    super("Authentication is required.");
+    this.name = "AuthRequiredError";
+  }
+}
+
+async function waitForAuthStateReady() {
+  const authWithStateReady = auth as AuthWithStateReady;
+
+  if (typeof authWithStateReady.authStateReady === "function") {
+    await authWithStateReady.authStateReady();
+    return;
   }
 
-  authInitializationPromise = new Promise((resolve) => {
+  await new Promise<void>((resolve) => {
     const unsubscribe = onAuthStateChanged(auth, () => {
       unsubscribe();
       resolve();
     });
   });
-
-  return authInitializationPromise;
 }
 
-export async function getAuthHeaders() {
-  if (!auth.currentUser) {
-    await waitForAuthInitialization();
-  }
+async function getAuthenticatedUser(): Promise<User> {
+  await waitForAuthStateReady();
 
   const user = auth.currentUser;
 
   if (!user) {
-    return {};
+    throw new AuthRequiredError();
   }
 
+  return user;
+}
+
+export async function getAuthHeaders() {
+  const user = await getAuthenticatedUser();
   const token = await user.getIdToken();
 
-  if (!token) {
-    return {};
+  if (!token.trim()) {
+    throw new AuthRequiredError();
   }
 
   return {

@@ -157,9 +157,6 @@ export function RecoveryWorkspacePage() {
                 {recoveryCase.title}
               </h1>
 
-              <p className="mt-3 break-all font-mono text-xs text-zinc-400">
-                {recoveryCase.case_id}
-              </p>
             </div>
 
             {activeSection === "overview" && (
@@ -196,9 +193,12 @@ export function RecoveryWorkspacePage() {
 }
 
 function formatStatus(status: string) {
-  return status
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) =>
-      letter.toUpperCase()
-    );
+  const labels: Record<string, string> = {
+    recovering: "Recovery in progress",
+    waiting_for_documents: "Documents needed",
+    ready_for_review: "Ready for review",
+    ready_to_resubmit: "Ready for resubmission",
+  };
+
+  return labels[status] ?? "Recovery in progress";
 }
