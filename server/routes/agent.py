@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 from repath_agent.services.agent_service import (
     AgentCaseNotFoundError,
+    AgentMessagePersistenceError,
     AgentSessionLinkError,
     send_agent_message,
 )
@@ -52,6 +53,12 @@ async def message_agent(body: AgentMessageRequest):
         raise HTTPException(
             status_code=500,
             detail="Unable to link this agent session to the recovery case.",
+        ) from error
+
+    except AgentMessagePersistenceError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to save this recovery case message.",
         ) from error
 
     except Exception as error:

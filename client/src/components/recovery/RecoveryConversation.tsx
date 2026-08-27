@@ -8,16 +8,12 @@ import { motion } from "motion/react";
 
 import {
   AgentApiError,
+  type RecoveryMessage,
   sendAgentMessage,
 } from "@/services/agentApi";
 
-type Message = {
-  id: string;
-  role: "user" | "agent";
-  content: string;
-};
-
 type RecoveryConversationProps = {
+  initialMessages?: RecoveryMessage[];
   initialUserMessage?: string;
   initialAgentMessage?: string;
   initialSessionId?: string | null;
@@ -28,6 +24,7 @@ type RecoveryConversationProps = {
 };
 
 export function RecoveryConversation({
+  initialMessages,
   initialUserMessage,
   initialAgentMessage,
   initialSessionId,
@@ -41,26 +38,30 @@ export function RecoveryConversation({
       initialSessionId ?? null
     );
 
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const initialMessages: Message[] = [];
+  const [messages, setMessages] = useState<RecoveryMessage[]>(() => {
+    if (initialMessages) {
+      return initialMessages;
+    }
+
+    const conversationMessages: RecoveryMessage[] = [];
 
     if (initialUserMessage) {
-      initialMessages.push({
-        id: crypto.randomUUID(),
+      conversationMessages.push({
+        message_id: crypto.randomUUID(),
         role: "user",
         content: initialUserMessage,
       });
     }
 
     if (initialAgentMessage) {
-      initialMessages.push({
-        id: crypto.randomUUID(),
+      conversationMessages.push({
+        message_id: crypto.randomUUID(),
         role: "agent",
         content: initialAgentMessage,
       });
     }
 
-    return initialMessages;
+    return conversationMessages;
   });
 
   const [input, setInput] = useState("");
@@ -74,8 +75,8 @@ export function RecoveryConversation({
       return;
     }
 
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
+    const userMessage: RecoveryMessage = {
+      message_id: crypto.randomUUID(),
       role: "user",
       content: message,
     };
@@ -98,8 +99,8 @@ export function RecoveryConversation({
         await onSessionUpdated?.();
       }
 
-      const agentMessage: Message = {
-        id: crypto.randomUUID(),
+      const agentMessage: RecoveryMessage = {
+        message_id: crypto.randomUUID(),
         role: "agent",
         content: result.response,
       };
@@ -133,7 +134,7 @@ export function RecoveryConversation({
       {/* Conversation */}
       <div className="space-y-10 pb-8">
         {messages.map((message) => (
-          <div key={message.id}>
+          <div key={message.message_id}>
             <p className="mb-2 text-xs font-normal uppercase tracking-[0.12em] text-zinc-400">
               {message.role === "user" ? "You" : "RePath"}
             </p>

@@ -9,6 +9,7 @@ from repath_agent.agent import root_agent
 from repath_agent.services.firestore_service import (
     get_case,
     link_case_agent_session,
+    save_case_message,
 )
 
 load_dotenv()
@@ -30,6 +31,10 @@ class AgentCaseNotFoundError(Exception):
 
 
 class AgentSessionLinkError(Exception):
+    pass
+
+
+class AgentMessagePersistenceError(Exception):
     pass
 
 
@@ -115,6 +120,20 @@ async def send_agent_message(
         case_id=case_id,
     )
 
+    if case_id:
+        try:
+            saved_message = save_case_message(
+                case_id=case_id,
+                role="user",
+                content=message,
+                session_id=session_id,
+            )
+        except Exception as error:
+            raise AgentMessagePersistenceError() from error
+
+        if saved_message is None:
+            raise AgentCaseNotFoundError()
+
     content = types.Content(
         role="user",
         parts=[
@@ -135,6 +154,20 @@ async def send_agent_message(
                     part.text or ""
                     for part in event.content.parts
                 )
+
+    if case_id and final_response:
+        try:
+            saved_message = save_case_message(
+                case_id=case_id,
+                role="agent",
+                content=final_response,
+                session_id=session_id,
+            )
+        except Exception as error:
+            raise AgentMessagePersistenceError() from error
+
+        if saved_message is None:
+            raise AgentMessagePersistenceError()
 
     return {
         "session_id": session_id,

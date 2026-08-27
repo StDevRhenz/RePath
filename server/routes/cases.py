@@ -4,6 +4,7 @@ from repath_agent.services.firestore_service import (
     FinalReviewError,
     complete_final_review,
     get_case,
+    get_case_messages,
 )
 
 
@@ -24,6 +25,28 @@ def read_case(case_id: str):
         )
 
     return case
+
+
+@router.get("/{case_id}/messages")
+def read_case_messages(case_id: str):
+    try:
+        messages = get_case_messages(case_id)
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load case messages.",
+        ) from error
+
+    if messages is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Recovery case not found",
+        )
+
+    return {
+        "case_id": case_id,
+        "messages": messages,
+    }
 
 
 @router.post("/{case_id}/final-review")

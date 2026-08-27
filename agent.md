@@ -1,9 +1,10 @@
 You are continuing work on my existing RePath project.
 
-Before changing anything, inspect the repository and existing implementation.
+Before changing anything, inspect the current repository and existing implementation.
 
 Do NOT rebuild working features.
-Do NOT modify document validation/final review unless necessary.
+Do NOT modify document upload/validation/final review.
+Do NOT modify Gemini model configuration.
 Do NOT consume Gemini requests during implementation/testing.
 Do NOT commit or push automatically.
 Do NOT refactor unrelated files.
@@ -11,256 +12,249 @@ Do NOT refactor unrelated files.
 CURRENT VERIFIED STATE
 
 RePath already has:
+- persistent recovery cases in Firestore
+- case_id
+- agent_session_id linkage
+- Agent tab messaging
+- RecoveryConversation UI
+- mock agent mode
+- real backend agent API
+- expired in-memory session recovery
 
-Frontend:
-- Landing
-- New Recovery
-- Resume Case
-- Recovery Workspace
-- Overview
-- Documents
-- Recovery
-- Agent tab skeleton
+Current limitation:
 
-Backend:
-- FastAPI
-- Firestore
-- Google ADK
-- Gemini agent
-- persistent recovery cases
-- document upload
-- deterministic document validation
-- replace/remove document lifecycle
-- final review
-- ready_to_resubmit state
+The visible Agent chat history is stored only in React state.
 
-Current recovery lifecycle works:
+If the user:
+- refreshes the browser
+- leaves the recovery workspace
+- comes back later
 
-Rejected / incomplete
-→ recovery case created
-→ missing documents identified
-→ documents uploaded
-→ validated
-→ ready_for_review
-→ final review
-→ ready_to_resubmit
-
-IMPORTANT EXISTING AGENT ARCHITECTURE
-
-There is already an agent API flow using:
-- Google ADK Runner
-- InMemorySessionService
-- send_agent_message(...)
-- POST /api/agent/message
-
-The frontend already has:
-- agentApi.ts
-- RecoveryConversation.tsx
-- NewRecoveryPage.tsx
-
-The agent API returns:
-
-{
-  "session_id": "...",
-  "response": "..."
-}
-
-Multi-turn messaging has already been tested successfully.
-
-IMPORTANT:
-session_id and case_id are DIFFERENT.
-
-case_id = persistent Firestore recovery case
-session_id = ADK conversation session
-
-CURRENT PROBLEM
-
-The Agent tab inside RecoveryWorkspace is intentionally disabled because a resumed Firestore case does not currently know which ADK session belongs to it.
+the visible previous messages disappear.
 
 GOAL
 
-Make the Agent tab aware of the recovery case and able to continue the appropriate agent conversation.
+Persist real Agent-tab chat history per recovery case in Firestore and reload it when the Agent tab is opened.
 
-However:
-- do NOT call Gemini automatically on page load
-- do NOT consume AI quota during development
-- preserve the current mock-agent capability
-- do not fake case/session relationships in the UI
+IMPORTANT:
+Mock mode must remain local-only and must NOT save mock messages into Firestore.
 
 IMPLEMENT THE FOLLOWING:
 
-1. FIRESTORE CASE SESSION FIELD
+1. FIRESTORE MESSAGE STORAGE
 
-Extend the recovery case model to support:
+Use a Firestore subcollection under each recovery case.
 
-agent_session_id: string | null
+Preferred structure:
 
-New cases should initialize:
+cases/{case_id}/messages/{message_id}
 
-agent_session_id = null
-
-Existing cases without this field must remain backward compatible.
-
-2. LINK SESSION TO CASE
-
-Create a backend service function that can persist:
-
-case_id → agent_session_id
-
-Do not let arbitrary unknown case IDs create new cases.
-
-3. AGENT MESSAGE API
-
-Extend the agent message flow so that it can optionally receive a case_id.
-
-Preferred request shape:
+Each message should contain:
 
 {
-  "message": "...",
-  "session_id": "... or null",
-  "case_id": "... or null"
+  "message_id": "...",
+  "role": "user" | "agent",
+  "content": "...",
+  "created_at": timestamp
 }
 
+Optionally include:
+- session_id
+if useful for debugging/history, but do not make it required for rendering.
+
+Do NOT store the entire chat history as one growing array inside the main case document.
+
+2. FIRESTORE SERVICE FUNCTIONS
+
+Add clear service functions such as:
+
+save_case_message(...)
+get_case_messages(...)
+
 Behavior:
+- verify case exists
+- save messages under the correct case subcollection
+- retrieve messages ordered by created_at ascending
+- return clean serializable dictionaries
+- do not expose Firestore internals to the route layer
 
-A. If session_id is provided:
-- continue that session
+3. MESSAGE API
 
-B. If no session_id is provided but case_id is provided:
-- load the recovery case
-- if case.agent_session_id exists, reuse it
-- otherwise create a new ADK session and persist it to that case
+Add an endpoint such as:
 
-C. If both are absent:
-- preserve the existing new-conversation behavior
-
-D. If case_id does not exist:
-- return 404
-
-Do not silently overwrite an existing case's session with an unrelated session unless there is a clear intended reason.
-
-4. NEW CASE CREATION FLOW
-
-Inspect the existing agent/tool workflow.
-
-When the agent creates a persistent recovery case during a conversation, associate the current ADK session with that case if reasonably possible within the existing architecture.
-
-Do not heavily redesign the agent tools if a smaller service-level solution works.
-
-If automatic linkage during creation is difficult, document the limitation clearly and implement safe linkage when the case is first opened in the Agent tab.
-
-5. AGENT TAB FRONTEND
-
-Update AgentSection so it accepts the current RecoveryCase.
-
-Replace the disabled placeholder with a real case-aware conversation UI.
+GET /api/cases/{case_id}/messages
 
 It should:
-- display messages
-- allow user input
-- send through agentApi
-- pass recoveryCase.case_id
-- reuse recoveryCase.agent_session_id when available
-- show loading/thinking state
-- show friendly API errors
-- support Enter to send
-- Shift+Enter for newline
-- render markdown consistently with the existing RecoveryConversation component
+- return 404 if case does not exist
+- return an empty array if the case exists but has no messages
+- return messages in chronological order
 
-Prefer reusing existing conversation/message rendering logic rather than duplicating large UI code.
+Preferred response:
 
-6. MOCK MODE MUST STILL WORK
+{
+  "case_id": "...",
+  "messages": [
+    {
+      "message_id": "...",
+      "role": "user",
+      "content": "...",
+      "created_at": "..."
+    }
+  ]
+}
 
-There is currently:
+4. SAVE REAL AGENT MESSAGES
 
-const USE_MOCK_AGENT = true
+Integrate persistence into the existing real agent messaging flow.
 
-Do not remove this.
+When a real case-aware Agent message is sent:
 
-When mock mode is enabled:
-- do not call FastAPI/Gemini
-- Agent tab should still be usable for frontend development
-- mock responses may be generic but must not pretend to have persisted a real ADK session unless explicitly represented as mock
+- save the USER message
+- send through the existing ADK/Gemini flow
+- after successful Agent response, save the AGENT response
 
-When USE_MOCK_AGENT = false:
-- real case/session API flow should work
+Important:
+- only save messages when case_id is provided
+- do not save generic agent conversations with no case_id unless existing architecture clearly requires it
+- do not save mock messages
+- do not save an Agent response if the request fails before one exists
 
-7. RECOVERY CASE TYPE
+If Gemini returns 429:
+- user message may already have been persisted
+- do not create a fake Agent response
+- frontend should still handle the existing quota error normally
 
-Update frontend RecoveryCase type:
+5. FRONTEND MESSAGE TYPE
 
-agent_session_id?: string | null
+Create/reuse a shared message interface.
 
-Backward compatibility is important because older Firestore cases may not have this field.
+Example:
 
-8. PERSISTENCE LIMITATION
+type RecoveryMessage = {
+  message_id?: string;
+  role: "user" | "agent";
+  content: string;
+  created_at?: string;
+};
 
-Current backend uses InMemorySessionService.
+Avoid having multiple incompatible message types across AgentSection and RecoveryConversation.
 
-Therefore ADK sessions disappear when backend restarts.
+6. FRONTEND MESSAGE API
 
-Do NOT solve full persistent ADK session storage in this task unless there is already a simple supported implementation in the codebase.
+Add a service function such as:
 
-Instead:
-- keep Firestore agent_session_id linkage
-- handle missing/expired in-memory session gracefully
-- document the limitation
+getCaseMessages(caseId)
 
-If an existing stored session_id no longer exists in InMemorySessionService:
-- create a fresh session safely
-- update Firestore agent_session_id
-- continue without crashing
+Keep API calls outside React components.
 
-9. ERROR HANDLING
+7. AGENT TAB INITIAL LOAD
+
+When AgentSection opens for a real recovery case:
+
+- load persisted messages from Firestore/backend
+- show loading state if appropriate
+- render existing history in chronological order
+- if no messages exist, show the existing introductory empty state
+
+Do NOT call Gemini when loading history.
+
+8. REUSE RecoveryConversation
+
+Reuse the existing RecoveryConversation rendering and input logic.
+
+Allow it to accept optional initial/history messages.
+
+Do not duplicate:
+- markdown rendering
+- thinking UI
+- composer behavior
+- Enter / Shift+Enter logic
+
+9. MOCK MODE
+
+USE_MOCK_AGENT = true must remain.
+
+When mock mode is active:
+- do not fetch Firestore chat history if that would confuse development
+- do not persist mock messages
+- mock conversation can remain local React state
+- clearly keep mock session local-only
+
+10. REFRESH BEHAVIOR
+
+Expected real-mode behavior:
+
+User sends:
+"What should I do next?"
+
+Agent replies.
+
+Refresh browser.
+
+Open Agent tab.
+
+Expected:
+- old user message appears
+- old Agent response appears
+- user can continue conversation
+
+11. BACKEND RESTART LIMITATION
+
+Current ADK still uses InMemorySessionService.
+
+Chat history persistence is separate from ADK conversational memory.
+
+If backend restarts:
+- Firestore chat history should STILL render
+- ADK may create a fresh session
+- do not pretend the new ADK session has full hidden conversational memory just because visible messages exist
+
+Do not solve persistent ADK session storage in this task.
+
+12. DUPLICATE PROTECTION
+
+Avoid obvious duplicate message writes caused by:
+- frontend refresh
+- React rerenders
+- retry paths
+
+Message saving should happen in the backend agent request lifecycle, not simply because a message is rendered.
+
+13. ERROR HANDLING
 
 Handle:
-- nonexistent case
-- expired/missing ADK session
-- agent API failure
-- Gemini 429 quota
-- invalid request
-- Firestore update failure
+- unknown case → 404
+- Firestore read/write failures → clean 500
+- history load failure → frontend-friendly error
+- malformed/empty messages
+- Gemini 429 remains handled as before
 
-Do not expose stack traces or secrets.
+Do not leak stack traces.
 
-10. DO NOT TOUCH
+14. DO NOT TOUCH
 
-Do not modify:
-- document upload architecture
-- document validation behavior
-- final review logic
-- recovery progress logic
-- Gemini model selection
+Do NOT modify:
+- document validation
+- final review
+- recovery progress
+- status logic
+- Agent model
 - Google credentials
-- deployment
 - authentication
+- deployment
 - demo documents
 - unrelated styling
 
-11. CODE QUALITY
-
-Keep changes small.
-Reuse:
-- agentApi.ts
-- RecoveryConversation patterns
-- existing Firestore service
-- existing RecoveryCase refresh logic
-- existing shadcn/Textarea/Button components
-
-Avoid duplicating markdown renderer or message UI if it can be extracted/reused cleanly.
-
-Do not over-engineer.
-
-WHEN FINISHED
+15. WHEN FINISHED
 
 Do not commit or push.
 
 Give me:
 1. files changed
-2. backend session-linking behavior
-3. frontend Agent tab behavior
-4. how mock mode behaves
-5. how expired sessions are handled
+2. Firestore message structure
+3. backend write/read behavior
+4. frontend history loading behavior
+5. mock mode behavior
 6. limitations
 7. exact manual test steps
 

@@ -81,6 +81,88 @@ def link_case_agent_session(
     )
 
 
+def save_case_message(
+    case_id: str,
+    role: str,
+    content: str,
+    session_id: str | None = None,
+) -> dict | None:
+    if role not in {"user", "agent"}:
+        raise ValueError("Invalid message role.")
+
+    if not content.strip():
+        raise ValueError("Message content cannot be empty.")
+
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+    case_document = case_ref.get()
+
+    if not case_document.exists:
+        return None
+
+    message_id = str(uuid4())
+    created_at = datetime.now(timezone.utc)
+
+    message = {
+        "message_id": message_id,
+        "role": role,
+        "content": content,
+        "created_at": created_at,
+    }
+
+    if session_id:
+        message["session_id"] = session_id
+
+    (
+        case_ref
+        .collection("messages")
+        .document(message_id)
+        .set(message)
+    )
+
+    return _serialize_case_message(message)
+
+
+def get_case_messages(case_id: str) -> list[dict] | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+    case_document = case_ref.get()
+
+    if not case_document.exists:
+        return None
+
+    messages = (
+        case_ref
+        .collection("messages")
+        .order_by("created_at")
+        .stream()
+    )
+
+    return [
+        _serialize_case_message(message.to_dict())
+        for message in messages
+    ]
+
+
+def _serialize_case_message(message: dict) -> dict:
+    serialized_message = {
+        "message_id": message.get("message_id"),
+        "role": message.get("role"),
+        "content": message.get("content"),
+        "created_at": _serialize_datetime(message.get("created_at")),
+    }
+
+    if message.get("session_id"):
+        serialized_message["session_id"] = message.get("session_id")
+
+    return serialized_message
+
+
+def _serialize_datetime(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    return value
+
+
 def add_case_document(case_id: str, document: dict):
     case_ref = db.collection(CASES_COLLECTION).document(case_id)
 
