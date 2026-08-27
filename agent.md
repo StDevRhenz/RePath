@@ -1,6 +1,6 @@
 You are continuing work on my existing RePath project.
 
-Before changing anything, inspect the current repository and existing implementation.
+Before changing anything, inspect the repository and existing implementation.
 
 Do NOT rebuild working features.
 Do NOT modify document upload/validation/final review.
@@ -12,251 +12,213 @@ Do NOT refactor unrelated files.
 CURRENT VERIFIED STATE
 
 RePath already has:
-- persistent recovery cases in Firestore
-- case_id
-- agent_session_id linkage
-- Agent tab messaging
-- RecoveryConversation UI
-- mock agent mode
-- real backend agent API
-- expired in-memory session recovery
 
-Current limitation:
+Frontend:
+- Recovery Workspace
+- Agent tab
+- case-aware Agent messaging
+- persistent visible chat history
+- mock mode
+- friendly 429 handling
 
-The visible Agent chat history is stored only in React state.
+Backend:
+- FastAPI
+- Google ADK Runner
+- InMemorySessionService
+- case_id ↔ agent_session_id linkage
+- Firestore chat history
+- automatic fresh-session recovery if an in-memory session disappears
 
-If the user:
-- refreshes the browser
-- leaves the recovery workspace
-- comes back later
+Current problem:
 
-the visible previous messages disappear.
+The actual ADK conversational session is still stored only in:
+
+InMemorySessionService
+
+Therefore when the backend restarts:
+- Firestore chat history still renders
+- agent_session_id still exists
+- but ADK hidden conversation state is gone
+- backend creates a new session
 
 GOAL
 
-Persist real Agent-tab chat history per recovery case in Firestore and reload it when the Agent tab is opened.
+Replace or augment the current in-memory ADK session handling with a persistent ADK-supported session strategy so conversation context survives backend restarts.
 
 IMPORTANT:
-Mock mode must remain local-only and must NOT save mock messages into Firestore.
+Use Google ADK-supported persistence if available in the currently installed google-adk version.
+Do NOT invent a custom fake ADK memory format if ADK already provides a supported persistent SessionService.
 
-IMPLEMENT THE FOLLOWING:
+FIRST STEP
 
-1. FIRESTORE MESSAGE STORAGE
+Before implementing:
+1. inspect installed google-adk version and available session service classes
+2. inspect the current agent_service.py architecture
+3. choose the simplest officially supported persistent SessionService available in this environment
 
-Use a Firestore subcollection under each recovery case.
+Prefer a supported database-backed SessionService if available.
 
-Preferred structure:
+Do NOT start by manually serializing hidden ADK session internals into Firestore.
 
-cases/{case_id}/messages/{message_id}
+IMPLEMENTATION REQUIREMENTS
 
-Each message should contain:
+1. PERSISTENT SESSION SERVICE
 
-{
-  "message_id": "...",
-  "role": "user" | "agent",
-  "content": "...",
-  "created_at": timestamp
-}
+Replace:
 
-Optionally include:
-- session_id
-if useful for debugging/history, but do not make it required for rendering.
+InMemorySessionService
 
-Do NOT store the entire chat history as one growing array inside the main case document.
+with the simplest appropriate persistent ADK SessionService supported by the installed version.
 
-2. FIRESTORE SERVICE FUNCTIONS
+Potential examples may include database-backed session services, but VERIFY actual available APIs before using them.
 
-Add clear service functions such as:
+Use a local development database if appropriate, such as SQLite, so we can prove persistence across backend restarts without adding unnecessary cloud infrastructure.
 
-save_case_message(...)
-get_case_messages(...)
+Keep the implementation easy to migrate later.
 
-Behavior:
-- verify case exists
-- save messages under the correct case subcollection
-- retrieve messages ordered by created_at ascending
-- return clean serializable dictionaries
-- do not expose Firestore internals to the route layer
+2. SESSION DATABASE LOCATION
 
-3. MESSAGE API
+If using SQLite or another local persistence file:
 
-Add an endpoint such as:
+store it somewhere intentional under server data/runtime storage, for example:
 
-GET /api/cases/{case_id}/messages
+server/data/adk_sessions.db
 
-It should:
-- return 404 if case does not exist
-- return an empty array if the case exists but has no messages
-- return messages in chronological order
+or another clean path.
 
-Preferred response:
+Do not put generated runtime database files into Git.
 
-{
-  "case_id": "...",
-  "messages": [
-    {
-      "message_id": "...",
-      "role": "user",
-      "content": "...",
-      "created_at": "..."
-    }
-  ]
-}
+Update .gitignore appropriately.
 
-4. SAVE REAL AGENT MESSAGES
+3. EXISTING SESSION LINKAGE
 
-Integrate persistence into the existing real agent messaging flow.
+Preserve the existing Firestore field:
 
-When a real case-aware Agent message is sent:
+agent_session_id
 
-- save the USER message
-- send through the existing ADK/Gemini flow
-- after successful Agent response, save the AGENT response
+Do not remove it.
 
-Important:
-- only save messages when case_id is provided
-- do not save generic agent conversations with no case_id unless existing architecture clearly requires it
-- do not save mock messages
-- do not save an Agent response if the request fails before one exists
+Flow should remain:
 
-If Gemini returns 429:
-- user message may already have been persisted
-- do not create a fake Agent response
-- frontend should still handle the existing quota error normally
+case_id
+→ Firestore agent_session_id
+→ persistent ADK session store
+→ continue same ADK session
 
-5. FRONTEND MESSAGE TYPE
+4. EXISTING SESSION RECOVERY
 
-Create/reuse a shared message interface.
+If Firestore points to a session that truly does not exist in the persistent session store:
 
-Example:
+- create a fresh ADK session
+- update agent_session_id
+- continue safely
 
-type RecoveryMessage = {
-  message_id?: string;
-  role: "user" | "agent";
-  content: string;
-  created_at?: string;
-};
+Do not crash.
 
-Avoid having multiple incompatible message types across AgentSection and RecoveryConversation.
+5. BACKWARD COMPATIBILITY
 
-6. FRONTEND MESSAGE API
+Existing recovery cases may:
+- have no agent_session_id
+- have an agent_session_id created while InMemorySessionService was used
+- point to a session that does not exist in the new persistent store
 
-Add a service function such as:
+Handle all of these cases gracefully.
 
-getCaseMessages(caseId)
+6. CHAT HISTORY
 
-Keep API calls outside React components.
+Do NOT replace Firestore chat-history persistence.
 
-7. AGENT TAB INITIAL LOAD
+Firestore chat history and ADK session persistence serve different purposes:
 
-When AgentSection opens for a real recovery case:
+Firestore messages:
+- visible user/agent chat history
 
-- load persisted messages from Firestore/backend
-- show loading state if appropriate
-- render existing history in chronological order
-- if no messages exist, show the existing introductory empty state
+ADK session store:
+- hidden agent conversational/session state
 
-Do NOT call Gemini when loading history.
+Keep both.
 
-8. REUSE RecoveryConversation
+7. MOCK MODE
 
-Reuse the existing RecoveryConversation rendering and input logic.
+USE_MOCK_AGENT = true must remain completely unaffected.
 
-Allow it to accept optional initial/history messages.
+Mock mode:
+- must not create real ADK sessions
+- must not touch persistent ADK session storage
+- must not call Gemini
 
-Do not duplicate:
-- markdown rendering
-- thinking UI
-- composer behavior
-- Enter / Shift+Enter logic
+8. NO AUTOMATIC GEMINI TESTING
 
-9. MOCK MODE
+Do NOT send Gemini requests during implementation.
 
-USE_MOCK_AGENT = true must remain.
+Static verification is enough:
+- imports resolve
+- server compiles
+- application starts if possible
+- session store can create/load a session without invoking Gemini
 
-When mock mode is active:
-- do not fetch Firestore chat history if that would confuse development
-- do not persist mock messages
-- mock conversation can remain local React state
-- clearly keep mock session local-only
-
-10. REFRESH BEHAVIOR
-
-Expected real-mode behavior:
-
-User sends:
-"What should I do next?"
-
-Agent replies.
-
-Refresh browser.
-
-Open Agent tab.
-
-Expected:
-- old user message appears
-- old Agent response appears
-- user can continue conversation
-
-11. BACKEND RESTART LIMITATION
-
-Current ADK still uses InMemorySessionService.
-
-Chat history persistence is separate from ADK conversational memory.
-
-If backend restarts:
-- Firestore chat history should STILL render
-- ADK may create a fresh session
-- do not pretend the new ADK session has full hidden conversational memory just because visible messages exist
-
-Do not solve persistent ADK session storage in this task.
-
-12. DUPLICATE PROTECTION
-
-Avoid obvious duplicate message writes caused by:
-- frontend refresh
-- React rerenders
-- retry paths
-
-Message saving should happen in the backend agent request lifecycle, not simply because a message is rendered.
-
-13. ERROR HANDLING
+9. ERROR HANDLING
 
 Handle:
-- unknown case → 404
-- Firestore read/write failures → clean 500
-- history load failure → frontend-friendly error
-- malformed/empty messages
-- Gemini 429 remains handled as before
+- persistent session store initialization failure
+- missing/expired session
+- database file/path problems
+- Firestore session-link update failure
 
-Do not leak stack traces.
+Return clean errors.
+Do not leak secrets or stack traces.
 
-14. DO NOT TOUCH
+10. CONFIGURATION
+
+Avoid hardcoding production-specific paths where possible.
+
+If useful, introduce a small environment/config value such as:
+
+ADK_SESSION_DB_URL
+
+with a safe local development default.
+
+Do not expose secrets.
+
+11. DO NOT TOUCH
 
 Do NOT modify:
-- document validation
+- Gemini model
+- Agent instructions/tools
+- document flow
 - final review
 - recovery progress
-- status logic
-- Agent model
-- Google credentials
-- authentication
-- deployment
 - demo documents
-- unrelated styling
+- deployment architecture
+- authentication
+- unrelated UI
 
-15. WHEN FINISHED
+12. CODE QUALITY
+
+Keep the change focused.
+
+Prefer:
+- one session service configuration point
+- minimal changes to send_agent_message
+- reuse existing case/session linking behavior
+
+Do not over-engineer.
+
+WHEN FINISHED
 
 Do not commit or push.
 
 Give me:
-1. files changed
-2. Firestore message structure
-3. backend write/read behavior
-4. frontend history loading behavior
-5. mock mode behavior
-6. limitations
-7. exact manual test steps
-
-
-IMPORTANT: do NOT commit or push automatically ILL CHECK ALL FILES 
+1. exact persistent SessionService chosen
+2. why it is supported in our installed google-adk version
+3. files changed
+4. runtime data/database path
+5. how existing agent_session_id linkage works now
+6. how old in-memory-only session IDs are handled
+7. .gitignore changes
+8. limitations
+9. exact manual test steps for:
+   - create session
+   - restart backend
+   - reuse same session
+10. no Gemini requests should be sent during implementation

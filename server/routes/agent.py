@@ -5,6 +5,7 @@ from repath_agent.services.agent_service import (
     AgentCaseNotFoundError,
     AgentMessagePersistenceError,
     AgentSessionLinkError,
+    AgentSessionStoreError,
     send_agent_message,
 )
 
@@ -53,6 +54,12 @@ async def message_agent(body: AgentMessageRequest):
         raise HTTPException(
             status_code=500,
             detail="Unable to link this agent session to the recovery case.",
+        ) from error
+
+    except AgentSessionStoreError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Agent session storage is not available.",
         ) from error
 
     except AgentMessagePersistenceError as error:

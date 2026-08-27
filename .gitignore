@@ -13,6 +13,7 @@ client/node_modules/
 client/dist/
 
 server/uploads
+server/data/
 REPATH_PROJECT_CHECKPOINT.md
 
 server/.env

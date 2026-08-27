@@ -1,8 +1,10 @@
+import os
 import uuid
+from pathlib import Path
 
 from dotenv import load_dotenv
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions import DatabaseSessionService
 from google.genai import types
 
 from repath_agent.agent import root_agent
@@ -16,14 +18,36 @@ load_dotenv()
 
 APP_NAME = "repath_agent"
 USER_ID = "repath_user"
-
-session_service = InMemorySessionService()
-
-runner = Runner(
-    agent=root_agent,
-    app_name=APP_NAME,
-    session_service=session_service,
+SERVER_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_SESSION_DB_PATH = SERVER_DIR / "data" / "adk_sessions.db"
+DEFAULT_SESSION_DB_URL = (
+    f"sqlite+aiosqlite:///{DEFAULT_SESSION_DB_PATH.as_posix()}"
 )
+
+DEFAULT_SESSION_DB_PATH.parent.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+try:
+    session_service = DatabaseSessionService(
+        db_url=os.getenv(
+            "ADK_SESSION_DB_URL",
+            DEFAULT_SESSION_DB_URL,
+        ),
+    )
+
+    runner = Runner(
+        agent=root_agent,
+        app_name=APP_NAME,
+        session_service=session_service,
+    )
+except Exception as error:
+    session_service = None
+    runner = None
+    session_service_error = error
+else:
+    session_service_error = None
 
 
 class AgentCaseNotFoundError(Exception):
@@ -38,7 +62,13 @@ class AgentMessagePersistenceError(Exception):
     pass
 
 
+class AgentSessionStoreError(Exception):
+    pass
+
+
 async def create_agent_session() -> str:
+    ensure_session_store_ready()
+
     session_id = str(uuid.uuid4())
 
     await session_service.create_session(
@@ -51,6 +81,8 @@ async def create_agent_session() -> str:
 
 
 async def get_agent_session(session_id: str):
+    ensure_session_store_ready()
+
     return await session_service.get_session(
         app_name=APP_NAME,
         user_id=USER_ID,
@@ -115,6 +147,8 @@ async def send_agent_message(
     session_id: str | None = None,
     case_id: str | None = None,
 ) -> dict:
+    ensure_session_store_ready()
+
     session_id = await resolve_agent_session(
         session_id=session_id,
         case_id=case_id,
@@ -173,3 +207,8 @@ async def send_agent_message(
         "session_id": session_id,
         "response": final_response,
     }
+
+
+def ensure_session_store_ready() -> None:
+    if session_service_error is not None or session_service is None or runner is None:
+        raise AgentSessionStoreError() from session_service_error
