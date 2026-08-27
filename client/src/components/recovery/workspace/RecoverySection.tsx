@@ -1,4 +1,4 @@
-import { Circle } from "lucide-react";
+import { Check, Circle } from "lucide-react";
 
 import type { RecoveryCase } from "@/services/caseApi";
 import { SectionHeading } from "@/components/recovery/workspace/SectionHeading";
@@ -16,6 +16,22 @@ export function RecoverySection({
         title="Recovery"
         description="Follow the steps prepared for this application."
       />
+
+      {recoveryCase.status === "ready_to_resubmit" && (
+        <div className="mt-8 border-y border-zinc-200 py-5">
+          <div className="flex items-center gap-3">
+            <Check
+              className="size-4 text-emerald-600"
+              strokeWidth={1.5}
+            />
+
+            <p className="text-sm font-light text-zinc-600">
+              Recovery is complete based on the current deterministic
+              review rules and is ready for resubmission.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="mt-8">
         {recoveryCase.recovery_steps.length > 0 ? (

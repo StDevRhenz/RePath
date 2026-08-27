@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from google.cloud import firestore
@@ -7,6 +8,13 @@ from google.cloud import firestore
 db = firestore.Client(project="repath-506704")
 
 CASES_COLLECTION = "cases"
+UPLOAD_DIR = Path("uploads")
+
+
+class FinalReviewError(Exception):
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
 
 
 def create_case(title: str) -> dict:
@@ -248,3 +256,85 @@ def update_case_documents_after_validation(
     updated_case = case_ref.get()
 
     return updated_case.to_dict()
+
+
+def complete_final_review(case_id: str) -> dict | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    document = case_ref.get()
+
+    if not document.exists:
+        return None
+
+    case_data = document.to_dict()
+
+    _verify_case_ready_for_final_review(case_id, case_data)
+
+    case_ref.update({
+        "status": "ready_to_resubmit",
+        "updated_at": datetime.now(timezone.utc),
+    })
+
+    return {
+        "case_id": case_id,
+        "status": "ready_to_resubmit",
+        "message": (
+            "Recovery case passed final review and is ready for resubmission."
+        ),
+    }
+
+
+def _verify_case_ready_for_final_review(
+    case_id: str,
+    case_data: dict,
+) -> None:
+    status = case_data.get("status")
+
+    if status == "ready_to_resubmit":
+        raise FinalReviewError(
+            "Recovery case has already passed final review."
+        )
+
+    if status != "ready_for_review":
+        raise FinalReviewError(
+            "Recovery case is not ready for final review."
+        )
+
+    missing_documents = case_data.get("missing_documents", [])
+
+    if len(missing_documents) > 0:
+        raise FinalReviewError(
+            "Recovery case still has missing documents."
+        )
+
+    documents = case_data.get("documents", [])
+
+    if len(documents) == 0:
+        raise FinalReviewError(
+            "Recovery case has no required recovery documents to review."
+        )
+
+    for recovery_document in documents:
+        document_name = (
+            recovery_document.get("document_name")
+            or "Recovery document"
+        )
+
+        if recovery_document.get("status") != "valid":
+            raise FinalReviewError(
+                f"{document_name} has not passed document validation."
+            )
+
+        stored_file_name = recovery_document.get("stored_file_name")
+
+        if not stored_file_name:
+            raise FinalReviewError(
+                f"{document_name} is missing stored file metadata."
+            )
+
+        file_path = UPLOAD_DIR / case_id / Path(stored_file_name).name
+
+        if not file_path.exists():
+            raise FinalReviewError(
+                f"{document_name} stored file could not be found."
+            )

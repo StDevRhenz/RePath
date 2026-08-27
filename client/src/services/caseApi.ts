@@ -25,6 +25,12 @@ export interface RecoveryCase {
   documents: CaseDocument[];
 }
 
+export interface FinalReviewResponse {
+  case_id: string;
+  status: "ready_to_resubmit";
+  message: string;
+}
+
 const API_URL = "http://127.0.0.1:8000";
 
 export async function getCase(caseId: string): Promise<RecoveryCase> {
@@ -35,4 +41,40 @@ export async function getCase(caseId: string): Promise<RecoveryCase> {
   }
 
   return response.json();
+}
+
+export async function finalizeRecoveryCase(
+  caseId: string
+): Promise<FinalReviewResponse> {
+  const response = await fetch(
+    `${API_URL}/api/cases/${caseId}/final-review`,
+    {
+      method: "POST",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, "Failed to complete final review.")
+    );
+  }
+
+  return response.json();
+}
+
+async function getErrorMessage(
+  response: Response,
+  fallbackMessage: string
+) {
+  try {
+    const data = await response.json();
+
+    if (typeof data.detail === "string") {
+      return data.detail;
+    }
+  } catch {
+    return fallbackMessage;
+  }
+
+  return fallbackMessage;
 }

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "motion/react";
 import {
   Check,
@@ -6,17 +7,40 @@ import {
   Route,
 } from "lucide-react";
 
-import type { RecoveryCase } from "@/services/caseApi";
+import { Button } from "@/components/ui/button";
+import {
+  finalizeRecoveryCase,
+  type RecoveryCase,
+} from "@/services/caseApi";
 import { SectionHeading } from "@/components/recovery/workspace/SectionHeading";
 
 type OverviewSectionProps = {
   recoveryCase: RecoveryCase;
+  onCaseUpdated: () => Promise<void>;
 };
 
 export function OverviewSection({
   recoveryCase,
+  onCaseUpdated,
 }: OverviewSectionProps) {
   const progress = getRecoveryProgress(recoveryCase.status);
+  const [finalReviewLoading, setFinalReviewLoading] =
+    useState(false);
+  const [finalReviewError, setFinalReviewError] = useState("");
+
+  async function handleFinalReview() {
+    setFinalReviewError("");
+    setFinalReviewLoading(true);
+
+    try {
+      await finalizeRecoveryCase(recoveryCase.case_id);
+      await onCaseUpdated();
+    } catch (error) {
+      setFinalReviewError(getRequestErrorMessage(error));
+    } finally {
+      setFinalReviewLoading(false);
+    }
+  }
 
   return (
     <div className="mt-12 max-w-4xl space-y-12">
@@ -77,6 +101,36 @@ export function OverviewSection({
               strokeWidth={1.5}
             />
           </div>
+
+          {recoveryCase.status === "ready_for_review" && (
+            <div className="mt-5 flex flex-col items-start gap-3 border-t border-zinc-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-xl text-sm font-light leading-6 text-zinc-500">
+                Complete a final deterministic review before this
+                recovery case is marked ready for resubmission.
+              </p>
+
+              <Button
+                onClick={handleFinalReview}
+                disabled={finalReviewLoading}
+                className="h-10 px-4 font-normal"
+              >
+                {finalReviewLoading ? (
+                  "Reviewing..."
+                ) : (
+                  <>
+                    Complete final review
+                    <Check className="size-4" />
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
+          {finalReviewError && (
+            <p className="mt-4 text-sm font-light text-red-600">
+              {finalReviewError}
+            </p>
+          )}
         </div>
       </section>
 
@@ -191,4 +245,12 @@ function getRecoveryProgress(status: string) {
     default:
       return 0;
   }
+}
+
+function getRequestErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Final review failed.";
 }

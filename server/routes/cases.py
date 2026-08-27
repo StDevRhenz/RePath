@@ -1,6 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
-from repath_agent.services.firestore_service import get_case
+from repath_agent.services.firestore_service import (
+    FinalReviewError,
+    complete_final_review,
+    get_case,
+)
 
 
 router = APIRouter(
@@ -20,3 +24,27 @@ def read_case(case_id: str):
         )
 
     return case
+
+
+@router.post("/{case_id}/final-review")
+def final_review_case(case_id: str):
+    try:
+        result = complete_final_review(case_id)
+    except FinalReviewError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=error.message,
+        ) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to complete final review.",
+        ) from error
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Recovery case not found",
+        )
+
+    return result

@@ -1,264 +1,236 @@
-You are working on my existing RePath project.
+You are continuing work on my existing RePath project.
 
-Before changing anything, inspect the current repository structure and existing implementation. Do not rebuild or replace working features unnecessarily.
+Before changing anything, inspect the current repository and existing implementation.
 
-PROJECT CONTEXT
+Do NOT rebuild working features.
+Do NOT modify Google ADK/Gemini.
+Do NOT consume AI quota.
+Do NOT refactor unrelated files.
+Do NOT commit or push automatically.
 
-RePath is a recovery agent for rejected/incomplete applications.
+CURRENT VERIFIED STATE
 
-Current stack:
-- Frontend: React + TypeScript + Vite + Tailwind
-- Backend: FastAPI + Python
-- Database: Google Cloud Firestore
-- AI agent: Google ADK / Gemini, but DO NOT modify the agent or consume Gemini quota for this task.
+The document recovery lifecycle is already working end-to-end.
 
-CURRENT WORKING FLOW
+Current flow:
 
-A recovery case already contains:
-- case_id
-- title
-- status
-- requirements
-- submitted_documents
-- missing_documents
-- recovery_steps
-- documents
+Missing
+→ Uploading
+→ Uploaded
+→ Validate
+→ Ready / Needs Attention
 
-The Documents frontend already supports:
-- selecting PDF/PNG/JPG/JPEG
-- real upload to FastAPI
-- UI status:
-  Missing → Uploading → Uploaded
-- replacing/removing files locally
-- a "Validate documents" button that currently uses MOCK validation
+The backend already:
+- stores uploaded files under server/uploads/{case_id}/
+- stores document metadata in Firestore
+- validates documents deterministically
+- updates missing_documents
+- moves the case to ready_for_review when no missing documents remain
+- supports replace and remove
+- keeps frontend and Firestore synchronized
 
-The backend already has:
+The frontend workspace already has:
+- Overview
+- Documents
+- Recovery
+- Agent
 
-POST /api/cases/{case_id}/documents
+Current verified case state after all documents are valid:
 
-It:
-1. receives multipart file + document_name
-2. saves the actual file under:
-   server/uploads/{case_id}/
-3. creates document metadata
-4. adds metadata to the Firestore case
-5. returns HTTP 200
+status = "ready_for_review"
+missing_documents = []
 
-Firestore collection name is:
-"cases"
-
-Important existing service:
-repath_agent/services/firestore_service.py
-
-There is already:
-- create_case()
-- get_case()
-- update_case()
-- add_case_document()
-
-Do not change the collection name.
+Overview currently shows:
+- Recovery progress: 75%
+- Current status: Ready For Review
+- No missing requirements
 
 GOAL
 
-Replace the mock document validation with a real deterministic backend validation workflow.
+Implement the next deterministic recovery stage:
 
-IMPORTANT:
-For this task, DO NOT use Gemini/ADK.
-We only want the application architecture and lifecycle working first.
+ready_for_review
+→ final review
+→ ready_to_resubmit
+→ 100%
 
-IMPLEMENT THE FOLLOWING
+This is NOT Gemini/AI validation yet.
+This is an application-state final verification step.
 
-1. DOCUMENT VALIDATION ENDPOINT
+IMPLEMENT THE FOLLOWING:
 
-Create an appropriate endpoint, preferably something like:
+1. FINAL REVIEW BACKEND ENDPOINT
 
-POST /api/cases/{case_id}/documents/validate
+Create an endpoint such as:
 
-The endpoint should:
-- verify that the case exists
-- retrieve uploaded document metadata from Firestore
-- verify that the corresponding stored file actually exists
-- validate uploaded documents deterministically for now
+POST /api/cases/{case_id}/final-review
 
-For the current MVP validation, a document may be considered valid if:
-- its uploaded file exists
-- its content type is allowed
-- file is not empty
-- metadata is present
+The endpoint must:
 
-Return per-document validation results.
+- verify the recovery case exists
+- verify current case status is appropriate for final review
+- verify missing_documents is empty
+- verify there is at least one required/expected document if the case workflow requires documents
+- verify every uploaded recovery document is status == "valid"
+- reject the transition if any document is:
+  - uploaded
+  - validating
+  - needs_attention
+  - missing from disk if the existing validation architecture makes this necessary
+- do NOT trust the frontend to decide whether the case is complete
 
-Use statuses such as:
-- uploaded
-- validating
-- valid
-- needs_attention
+If all checks pass:
 
-Do not pretend to semantically understand the PDF yet.
+update case status to:
 
-If validation cannot confirm the document, return needs_attention with a useful validation_message.
+ready_to_resubmit
 
-2. FIRESTORE VALIDATION STATE
+and update updated_at.
 
-Update the correct document entry inside the case's `documents` array.
+Return a clean response containing:
+- case_id
+- status
+- message
 
-Each stored document should support fields such as:
+Example:
 
 {
-  "document_name": "...",
-  "original_file_name": "...",
-  "stored_file_name": "...",
-  "content_type": "...",
-  "status": "valid",
-  "validation_message": "...",
-  "validated_at": ...
+  "case_id": "...",
+  "status": "ready_to_resubmit",
+  "message": "Recovery case passed final review and is ready for resubmission."
 }
 
-Avoid simply appending duplicate versions of the same logical document.
+2. FIRESTORE SERVICE
 
-Use document_name as the logical requirement identifier unless the existing architecture suggests a safer identifier.
+Put the case state transition logic in an appropriate service function.
 
-3. FIX DOCUMENT REPLACEMENT
+Avoid putting all Firestore logic directly inside the route.
 
-If the user uploads a replacement for the same document_name:
-- replace/update the existing document metadata instead of continuously ArrayUnion-appending duplicates
-- delete the old locally stored file if appropriate
-- new document starts as "uploaded"
+Do not create a new status variant.
 
-4. FIX DOCUMENT REMOVAL
+Use existing statuses only:
 
-Add backend support to remove an uploaded case document.
+recovering
+waiting_for_documents
+ready_for_review
+ready_to_resubmit
 
-When removing:
-- verify the case exists
-- delete the physical file if it exists
-- remove its Firestore document metadata
-- the requirement should effectively return to missing/unresolved state
+If older code contains waiting_for_user_documents, do not introduce more usage of it.
 
-Expose an appropriate DELETE endpoint.
+3. ERROR CASES
 
-5. FRONTEND API SERVICE
+Return appropriate API errors for:
 
-Update/create the frontend document API service.
+- case does not exist → 404
+- case is not ready for final review → 400
+- missing_documents is not empty → 400
+- a required recovery document is not valid → 400
+- invalid current state → 400
+- persistence failure → 500
 
-It should support:
-- uploadCaseDocument(...)
-- validateCaseDocuments(...)
-- removeCaseDocument(...)
+Return useful messages without leaking stack traces.
 
-Keep API logic outside React components.
+4. FRONTEND API SERVICE
 
-6. UPDATE DocumentsSection.tsx
+Add an API function such as:
 
-Remove the fake 1.8-second validation.
+finalizeRecoveryCase(caseId)
 
-"Validate documents" must call the real FastAPI validation endpoint.
+Keep API calls in a service file, not directly inside the React component.
 
-Expected UI:
+Use clear TypeScript response interfaces.
 
-Missing
-→ Uploading...
-→ Uploaded
-→ Validating...
-→ Ready
+5. FRONTEND FINAL REVIEW ACTION
+
+Decide the cleanest existing workspace location for the action.
+
+Preferred behavior:
+
+When case.status === "ready_for_review":
+
+show a clear action such as:
+
+"Complete final review"
 
 or
 
-Missing
-→ Uploading...
-→ Uploaded
-→ Validating...
-→ Needs Attention
+"Review for resubmission"
 
-Display backend validation_message when a document needs attention.
+Do NOT redesign the page.
 
-Replace must use the real backend lifecycle.
+The action should:
+- call the backend final-review endpoint
+- show a loading state
+- disable while processing
+- show errors cleanly
+- refresh RecoveryCase after success
 
-Remove must use the real backend DELETE endpoint.
+6. OVERVIEW STATE
 
-Do not rely only on local React state as the source of truth after an API response.
+After successful final review, the existing Overview should naturally show:
 
-7. KEEP WORKSPACE STATE CONSISTENT
+Recovery progress: 100%
+Current status: Ready To Resubmit
 
-After upload / validation / remove:
-- refresh or update the RecoveryCase data so Firestore-backed state is reflected
-- Documents and Overview should not permanently contradict each other
+Use the existing progress mapping if already present.
 
-However, do not redesign the entire workspace.
+Do not hardcode a fake local success state if refreshing the Firestore-backed RecoveryCase already handles this.
 
-8. STATUS HANDLING
+7. RECOVERY SECTION
 
-Inspect existing status values before changing them.
+If appropriate and minimal, display that the recovery process is complete when status == ready_to_resubmit.
 
-Known statuses include:
-- recovering
-- waiting_for_documents
-- ready_for_review
-- ready_to_resubmit
+Do not redesign the whole section.
 
-There has previously been a mismatch with:
-waiting_for_user_documents
+8. IMPORTANT BUSINESS RULE
 
-Do not create additional inconsistent variants.
+ready_to_resubmit means:
 
-If all currently missing required documents have valid uploaded replacements, the case may move toward `ready_for_review`.
+RePath has verified that the recovery case is complete based on the current deterministic validation rules.
 
-Do NOT implement final ready_to_resubmit logic yet unless it already exists.
+It does NOT mean:
+- RePath submitted the application
+- the external institution approved it
+- the application is guaranteed to succeed
 
-9. ERROR HANDLING
+Keep wording accurate.
 
-Handle:
-- nonexistent case → 404
-- nonexistent uploaded document
-- unsupported type
-- empty file
-- missing local file
-- Firestore failure
-- failed frontend requests
+9. DO NOT IMPLEMENT YET
 
-Avoid leaking stack traces or secrets to the frontend.
-
-10. SECURITY / REPOSITORY HYGIENE
-
-Do not commit or expose:
-- .env
-- API keys
-- credentials
-- server/uploads contents
-
-server/uploads/ should remain ignored by Git.
-
-11. DO NOT TOUCH
-
-Do not modify:
-- Google ADK agent behavior
-- Gemini model configuration
-- mock Agent API setting
-- AgentSection
-- demo documents
+Do NOT add:
+- automatic external submission
+- browser automation
+- Google ADK calls
+- Gemini final review
 - authentication
-- deployment
-- unrelated UI
-- overall design/theme
+- deployment changes
+- demo documents
+- AgentSection integration
+- unrelated UI polish
 
-12. CODE QUALITY
+10. CODE QUALITY
 
-Reuse existing project patterns.
-Keep route code thin where reasonable.
-Put Firestore/document persistence logic in services rather than duplicating it across routes.
-Use clear TypeScript interfaces for API responses.
-Do not over-engineer.
+Keep changes small and consistent with the existing architecture.
+
+Reuse:
+- get_case
+- update_case
+- existing Firestore patterns
+- existing RecoveryCase frontend refresh logic
+
+Do not duplicate existing utilities unnecessarily.
 
 WHEN FINISHED
 
-Do not blindly refactor unrelated files.
+Do not commit or push.
 
 Give me:
-1. summary of files changed
-2. exact behavior implemented
-3. any architectural decisions made
-4. any remaining limitations
-5. exact manual testing steps I should perform
+1. files changed
+2. exact backend behavior
+3. exact frontend behavior
+4. state transition rules
+5. limitations
+6. manual test steps
 
 
 IMPORTANT: do NOT commit or push automatically ILL CHECK ALL FILES 

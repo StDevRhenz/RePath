@@ -165,6 +165,7 @@ export function RecoveryWorkspacePage() {
             {activeSection === "overview" && (
               <OverviewSection
                 recoveryCase={recoveryCase}
+                onCaseUpdated={refreshRecoveryCase}
               />
             )}
 
