@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from auth import get_current_user
 from config import MAX_DOCUMENT_UPLOAD_SIZE_BYTES, UPLOAD_DIR
 from repath_agent.services.firestore_service import (
     get_case,
@@ -33,13 +34,14 @@ async def upload_document(
     case_id: str,
     document_name: str = Form(...),
     file: UploadFile = File(...),
+    user=Depends(get_current_user),
 ):
     case = get_case(case_id)
 
-    if case is None:
+    if case is None or case.get("owner_id") != user["uid"]:
         raise HTTPException(
             status_code=404,
-            detail="Recovery case not found.",
+            detail="Case not found.",
         )
 
     if case.get("status") == "ready_to_resubmit":
@@ -134,13 +136,13 @@ async def upload_document(
 
 
 @router.post("/{case_id}/documents/validate")
-def validate_documents(case_id: str):
+def validate_documents(case_id: str, user=Depends(get_current_user)):
     case = get_case(case_id)
 
-    if case is None:
+    if case is None or case.get("owner_id") != user["uid"]:
         raise HTTPException(
             status_code=404,
-            detail="Recovery case not found.",
+            detail="Case not found.",
         )
 
     if case.get("status") == "ready_to_resubmit":
@@ -187,13 +189,17 @@ def validate_documents(case_id: str):
 
 
 @router.delete("/{case_id}/documents/{document_name}")
-def delete_document(case_id: str, document_name: str):
+def delete_document(
+    case_id: str,
+    document_name: str,
+    user=Depends(get_current_user),
+):
     case = get_case(case_id)
 
-    if case is None:
+    if case is None or case.get("owner_id") != user["uid"]:
         raise HTTPException(
             status_code=404,
-            detail="Recovery case not found.",
+            detail="Case not found.",
         )
 
     if case.get("status") == "ready_to_resubmit":

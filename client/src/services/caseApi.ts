@@ -1,4 +1,5 @@
 import { API_URL } from "@/lib/apiConfig";
+import { authFetch } from "@/lib/authFetch";
 
 export type CaseDocumentStatus =
   | "uploaded"
@@ -34,8 +35,12 @@ export interface FinalReviewResponse {
   message: string;
 }
 
+export interface MyCasesResponse {
+  cases: RecoveryCase[];
+}
+
 export async function getCase(caseId: string): Promise<RecoveryCase> {
-  const response = await fetch(`${API_URL}/api/cases/${caseId}`);
+  const response = await authFetch(`${API_URL}/api/cases/${caseId}`);
 
   if (!response.ok) {
     throw new Error("Failed to load recovery case");
@@ -44,10 +49,22 @@ export async function getCase(caseId: string): Promise<RecoveryCase> {
   return response.json();
 }
 
+export async function getMyCases(): Promise<MyCasesResponse> {
+  const response = await authFetch(`${API_URL}/api/cases`);
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(response, "Failed to load recovery cases.")
+    );
+  }
+
+  return response.json();
+}
+
 export async function finalizeRecoveryCase(
   caseId: string
 ): Promise<FinalReviewResponse> {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/final-review`,
     {
       method: "POST",

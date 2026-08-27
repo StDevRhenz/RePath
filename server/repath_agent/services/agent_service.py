@@ -1,4 +1,5 @@
 import uuid
+from contextlib import nullcontext
 
 from dotenv import load_dotenv
 from google.adk.runners import Runner
@@ -8,7 +9,9 @@ from google.genai import types
 from config import ADK_SESSION_DB_URL, DEFAULT_ADK_SESSION_DB_PATH
 from repath_agent.agent import root_agent
 from repath_agent.services.firestore_service import (
+    case_owner_context,
     get_case,
+    get_case_for_owner,
     link_case_agent_session,
     save_case_message,
 )
@@ -84,11 +87,16 @@ async def get_agent_session(session_id: str):
 async def resolve_agent_session(
     session_id: str | None = None,
     case_id: str | None = None,
+    owner_id: str | None = None,
 ) -> str:
     case = None
 
     if case_id:
-        case = get_case(case_id)
+        case = (
+            get_case_for_owner(case_id, owner_id)
+            if owner_id
+            else get_case(case_id)
+        )
 
         if case is None:
             raise AgentCaseNotFoundError()
@@ -137,18 +145,25 @@ async def send_agent_message(
     message: str,
     session_id: str | None = None,
     case_id: str | None = None,
+    owner_id: str | None = None,
+    owner_email: str | None = None,
 ) -> dict:
     ensure_session_store_ready()
 
     session_id = await resolve_agent_session(
         session_id=session_id,
         case_id=case_id,
+        owner_id=owner_id,
     )
 
     recovery_case = None
 
     if case_id:
-        recovery_case = get_case(case_id)
+        recovery_case = (
+            get_case_for_owner(case_id, owner_id)
+            if owner_id
+            else get_case(case_id)
+        )
 
         if recovery_case is None:
             raise AgentCaseNotFoundError()
@@ -182,17 +197,24 @@ async def send_agent_message(
 
     final_response = ""
 
-    async for event in runner.run_async(
-        user_id=USER_ID,
-        session_id=session_id,
-        new_message=content,
-    ):
-        if event.is_final_response():
-            if event.content and event.content.parts:
-                final_response = "".join(
-                    part.text or ""
-                    for part in event.content.parts
-                )
+    owner_context = (
+        case_owner_context(owner_id, owner_email)
+        if owner_id
+        else nullcontext()
+    )
+
+    with owner_context:
+        async for event in runner.run_async(
+            user_id=USER_ID,
+            session_id=session_id,
+            new_message=content,
+        ):
+            if event.is_final_response():
+                if event.content and event.content.parts:
+                    final_response = "".join(
+                        part.text or ""
+                        for part in event.content.parts
+                    )
 
     if case_id and final_response:
         try:

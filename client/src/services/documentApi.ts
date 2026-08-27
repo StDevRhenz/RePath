@@ -1,5 +1,6 @@
 import type { CaseDocument, CaseDocumentStatus } from "@/services/caseApi";
 import { API_URL } from "@/lib/apiConfig";
+import { authFetch } from "@/lib/authFetch";
 
 export interface UploadDocumentResponse {
   case_id: string;
@@ -37,7 +38,7 @@ export async function uploadCaseDocument(
   formData.append("document_name", documentName);
   formData.append("file", file);
 
-  const response = await fetch(
+  const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/documents`,
     {
       method: "POST",
@@ -57,7 +58,7 @@ export async function uploadCaseDocument(
 export async function validateCaseDocuments(
   caseId: string
 ): Promise<ValidateDocumentsResponse> {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/documents/validate`,
     {
       method: "POST",
@@ -77,7 +78,7 @@ export async function removeCaseDocument(
   caseId: string,
   documentName: string
 ): Promise<RemoveDocumentResponse> {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/documents/${encodeURIComponent(
       documentName
     )}`,

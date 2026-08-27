@@ -1,6 +1,7 @@
 import { API_URL } from "@/lib/apiConfig";
+import { authFetch } from "@/lib/authFetch";
 
-export const USE_MOCK_AGENT = false;
+export const USE_MOCK_AGENT = true;
 
 export interface RecoveryMessage {
   message_id?: string;
@@ -42,7 +43,7 @@ export async function sendAgentMessage(
     return mockAgentResponse(message);
   }
 
-  const response = await fetch(`${API_URL}/api/agent/message`, {
+  const response = await authFetch(`${API_URL}/api/agent/message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -67,7 +68,7 @@ export async function sendAgentMessage(
 export async function getCaseMessages(
   caseId: string
 ): Promise<CaseMessagesResponse> {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/messages`
   );
 

@@ -4,3 +4,4 @@ google-cloud-firestore==2.29.0
 python-dotenv==1.2.3
 python-multipart==0.0.32
 uvicorn==0.52.4
+firebase-admin

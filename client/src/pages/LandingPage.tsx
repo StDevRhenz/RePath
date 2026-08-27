@@ -3,9 +3,50 @@ import { ArrowRight, Route } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { signInWithGoogle, logout } from "@/services/authService";
+import { useAuth } from "@/context/AuthContext";
 
 export function LandingPage() {
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
+
+  console.log("Auth loading:", loading);
+  console.log("Current user:", user?.email);
+
+  async function handleGoogleLogin() {
+    try {
+      const user = await signInWithGoogle();
+
+      console.log("Logged in:", user.email);
+      console.log("UID:", user.uid);
+    } catch (error) {
+      console.error("Google login failed:", error);
+    }
+  }
+
+  async function handleLogout() {
+    await logout();
+    console.log("Logged out");
+  }
+
+  async function testAuth() {
+    if (!user) {
+      console.log("No logged-in user");
+      return;
+    }
+
+    const token = await user.getIdToken();
+
+    const response = await fetch("http://127.0.0.1:8000/api/auth/me", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    console.log("Auth test:", await response.json());
+  }
+
+
 
   return (
     <main className="min-h-screen bg-[#fafafa] text-zinc-950">
@@ -81,6 +122,18 @@ export function LandingPage() {
           </p>
         </motion.div>
       </section>
+
+      <button onClick={handleGoogleLogin}>
+        Continue with Google
+      </button>
+
+      <button onClick={handleLogout}>
+        Logout
+      </button>
+
+      <button onClick={testAuth}>
+        Test Backend Auth
+      </button>
     </main>
   );
 }

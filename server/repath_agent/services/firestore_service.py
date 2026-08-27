@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -11,6 +13,30 @@ db = firestore.Client(project=GOOGLE_CLOUD_PROJECT)
 
 CASES_COLLECTION = "cases"
 
+current_owner_id: ContextVar[str | None] = ContextVar(
+    "current_owner_id",
+    default=None,
+)
+current_owner_email: ContextVar[str | None] = ContextVar(
+    "current_owner_email",
+    default=None,
+)
+
+
+@contextmanager
+def case_owner_context(
+    owner_id: str,
+    owner_email: str | None = None,
+):
+    owner_id_token = current_owner_id.set(owner_id)
+    owner_email_token = current_owner_email.set(owner_email)
+
+    try:
+        yield
+    finally:
+        current_owner_id.reset(owner_id_token)
+        current_owner_email.reset(owner_email_token)
+
 
 class FinalReviewError(Exception):
     def __init__(self, message: str):
@@ -18,8 +44,14 @@ class FinalReviewError(Exception):
         super().__init__(message)
 
 
-def create_case(title: str) -> dict:
+def create_case(
+    title: str,
+    owner_id: str | None = None,
+    owner_email: str | None = None,
+) -> dict:
     case_id = str(uuid4())
+    resolved_owner_id = owner_id or current_owner_id.get()
+    resolved_owner_email = owner_email or current_owner_email.get()
 
     case_data = {
         "case_id": case_id,
@@ -31,6 +63,8 @@ def create_case(title: str) -> dict:
         "recovery_steps": [],
         "documents": [],
         "agent_session_id": None,
+        "owner_id": resolved_owner_id,
+        "owner_email": resolved_owner_email,
         "created_at": datetime.now(timezone.utc),
         "updated_at": datetime.now(timezone.utc),
     }
@@ -50,7 +84,45 @@ def get_case(case_id: str) -> dict | None:
     if not document.exists:
         return None
 
-    return document.to_dict()
+    case = document.to_dict()
+    owner_id = current_owner_id.get()
+
+    if owner_id and case.get("owner_id") != owner_id:
+        return None
+
+    return case
+
+
+def get_case_for_owner(
+    case_id: str,
+    owner_id: str,
+) -> dict | None:
+    case = get_case(case_id)
+
+    if case is None or case.get("owner_id") != owner_id:
+        return None
+
+    return case
+
+
+def get_cases_by_owner(owner_id: str) -> list[dict]:
+    documents = (
+        db.collection(CASES_COLLECTION)
+        .where("owner_id", "==", owner_id)
+        .stream()
+    )
+
+    return [
+        document.to_dict()
+        for document in documents
+    ]
+
+
+def case_belongs_to_owner(
+    case_id: str,
+    owner_id: str,
+) -> bool:
+    return get_case_for_owner(case_id, owner_id) is not None
 
 
 def update_case(case_id: str, updates: dict) -> dict | None:
@@ -59,6 +131,11 @@ def update_case(case_id: str, updates: dict) -> dict | None:
     document = case_ref.get()
 
     if not document.exists:
+        return None
+
+    owner_id = current_owner_id.get()
+
+    if owner_id and document.to_dict().get("owner_id") != owner_id:
         return None
 
     updates["updated_at"] = datetime.now(timezone.utc)

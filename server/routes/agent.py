@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from auth import get_current_user
 from repath_agent.services.agent_service import (
     AgentCaseNotFoundError,
     AgentMessagePersistenceError,
@@ -28,7 +29,10 @@ class AgentMessageResponse(BaseModel):
 
 
 @router.post("/message", response_model=AgentMessageResponse)
-async def message_agent(body: AgentMessageRequest):
+async def message_agent(
+    body: AgentMessageRequest,
+    user=Depends(get_current_user),
+):
     message = body.message.strip()
 
     if not message:
@@ -42,12 +46,14 @@ async def message_agent(body: AgentMessageRequest):
             message=message,
             session_id=body.session_id,
             case_id=body.case_id,
+            owner_id=user["uid"],
+            owner_email=user.get("email"),
         )
 
     except AgentCaseNotFoundError as error:
         raise HTTPException(
             status_code=404,
-            detail="Recovery case not found.",
+            detail="Case not found.",
         ) from error
 
     except AgentSessionLinkError as error:

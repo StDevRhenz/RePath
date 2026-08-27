@@ -1,10 +1,17 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+import firebase_admin
 
 from config import ALLOWED_ORIGINS
+from auth import get_current_user
 from routes.cases import router as cases_router
 from routes.agent import router as agent_router
 from routes.documents import router as documents_router
+
+
+if not firebase_admin._apps:
+    firebase_admin.initialize_app()
+
 
 app = FastAPI(
     title="RePath API",
@@ -24,6 +31,7 @@ app.include_router(cases_router)
 app.include_router(agent_router)
 app.include_router(documents_router)
 
+
 @app.get("/")
 def root():
     return {
@@ -37,4 +45,12 @@ def health():
     return {
         "status": "ok",
         "service": "repath-api",
+    }
+
+
+@app.get("/api/auth/me")
+async def auth_me(user=Depends(get_current_user)):
+    return {
+        "uid": user["uid"],
+        "email": user.get("email"),
     }
