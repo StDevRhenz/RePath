@@ -1,8 +1,7 @@
 type WorkspaceSection =
   | "overview"
   | "documents"
-  | "recovery"
-  | "agent";
+  | "recovery";
 
 type WorkspaceNavigationProps = {
   activeSection: WorkspaceSection;
@@ -16,7 +15,6 @@ const sections: {
   { label: "Overview", value: "overview" },
   { label: "Documents", value: "documents" },
   { label: "Recovery", value: "recovery" },
-  { label: "Agent", value: "agent" },
 ];
 
 export function WorkspaceNavigation({
@@ -31,6 +29,7 @@ export function WorkspaceNavigation({
           <button
             key={section.value}
             onClick={() => onChange(section.value)}
+            aria-current={activeSection === section.value ? "page" : undefined}
             className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
               activeSection === section.value
                 ? "bg-indigo-50 font-normal text-indigo-700"
@@ -48,6 +47,7 @@ export function WorkspaceNavigation({
           <button
             key={section.value}
             onClick={() => onChange(section.value)}
+            aria-current={activeSection === section.value ? "page" : undefined}
             className={`relative shrink-0 px-4 py-3 text-sm transition-colors ${
               activeSection === section.value
                 ? "font-normal text-zinc-950"

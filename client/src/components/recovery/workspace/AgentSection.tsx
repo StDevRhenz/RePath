@@ -69,6 +69,10 @@ export function AgentSection({
         description="Ask RePath about this recovery case."
       />
 
+      <p className="mt-4 text-sm font-light text-zinc-500">
+        Discussing: {recoveryCase.title}
+      </p>
+
       <div className="mt-8">
         {loadingMessages ? (
           <p className="text-sm font-light text-zinc-500">
@@ -87,7 +91,7 @@ export function AgentSection({
               initialSessionId={recoveryCase.agent_session_id ?? null}
               caseId={recoveryCase.case_id}
               placeholder="Ask about this recovery case..."
-              helperText="Messages are linked to this recovery case when the real agent API is enabled."
+              helperText="Messages in this conversation stay connected to this recovery."
               onSessionUpdated={onCaseUpdated}
             />
           </>

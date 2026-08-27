@@ -40,22 +40,24 @@ export function ResumeCasePage() {
 
   return (
     <main className="min-h-screen bg-[#fafafa] text-zinc-950">
-      <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-8">
-        <button
-          onClick={() => navigate("/")}
-          className="text-xl font-normal tracking-tight"
-        >
-          RePath
-        </button>
+      <nav className="sticky top-0 z-50 border-b border-zinc-200/80 bg-[#fafafa]/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-8">
+          <button
+            onClick={() => navigate("/")}
+            className="text-xl font-normal tracking-tight"
+          >
+            RePath
+          </button>
 
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/")}
-          className="font-normal"
-        >
-          <ArrowLeft className="size-4" />
-          Back
-        </Button>
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/")}
+            className="font-normal"
+          >
+            <ArrowLeft className="size-4" />
+            Back
+          </Button>
+        </div>
       </nav>
 
       <section className="mx-auto flex min-h-[75vh] max-w-xl items-center px-6">
@@ -74,7 +76,7 @@ export function ResumeCasePage() {
           </h1>
 
           <p className="mt-5 max-w-md font-light leading-7 text-zinc-500">
-            Enter the case ID you received when your recovery was created.
+            Open a recovery from your saved list. If support gave you a recovery ID, enter it here.
           </p>
 
           <div className="mt-10">

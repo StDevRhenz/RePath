@@ -91,9 +91,7 @@ function mockAgentResponse(
     response: `
 ### Recovery Analysis
 
-Mock mode is active, so this response did not call FastAPI or Gemini.
-
-I can help you reason through the current recovery case, review next steps, or prepare wording for resubmission once the real agent connection is enabled.
+I can help you review this recovery, understand the next steps, or prepare wording for resubmission.
     `.trim(),
   };
 }

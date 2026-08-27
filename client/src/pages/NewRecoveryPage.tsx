@@ -4,7 +4,9 @@ import { motion } from "motion/react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { AuthenticatedTopNav } from "@/components/navigation/AuthenticatedTopNav";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/context/AuthContext";
 import {
   AgentApiError,
   sendAgentMessage,
@@ -13,6 +15,7 @@ import { RecoveryConversation } from "@/components/recovery/RecoveryConversation
 
 export function NewRecoveryPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -65,20 +68,24 @@ export function NewRecoveryPage() {
   if (sessionId && agentResponse) {
     return (
       <main className="min-h-screen bg-[#fafafa] text-zinc-950">
-        <header className="border-b border-zinc-200/80 bg-white">
-          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 lg:px-8">
-            <button
-              onClick={() => navigate("/")}
-              className="text-xl font-normal tracking-tight"
-            >
-              RePath
-            </button>
+        {user ? (
+          <AuthenticatedTopNav />
+        ) : (
+          <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-[#fafafa]/95 backdrop-blur">
+            <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 lg:px-8">
+              <button
+                onClick={() => navigate("/")}
+                className="text-xl font-normal tracking-tight"
+              >
+                RePath
+              </button>
 
-            <span className="text-sm font-light text-zinc-500">
-              Recovery Agent
-            </span>
-          </div>
-        </header>
+              <span className="text-sm font-light text-zinc-500">
+                Recovery Agent
+              </span>
+            </div>
+          </header>
+        )}
 
         <section className="px-6 py-12">
           <RecoveryConversation
@@ -94,23 +101,29 @@ export function NewRecoveryPage() {
   return (
     <main className="min-h-screen bg-[#fafafa] text-zinc-950">
       {/* Navigation */}
-      <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-8">
-        <button
-          onClick={() => navigate("/")}
-          className="text-xl font-normal tracking-tight"
-        >
-          RePath
-        </button>
+      {user ? (
+        <AuthenticatedTopNav />
+      ) : (
+        <nav className="sticky top-0 z-50 border-b border-zinc-200/80 bg-[#fafafa]/95 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-8">
+            <button
+              onClick={() => navigate("/")}
+              className="text-xl font-normal tracking-tight"
+            >
+              RePath
+            </button>
 
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/")}
-          className="font-normal"
-        >
-          <ArrowLeft className="size-4" />
-          Back
-        </Button>
-      </nav>
+            <Button
+              variant="ghost"
+              onClick={() => navigate("/")}
+              className="font-normal"
+            >
+              <ArrowLeft className="size-4" />
+              Back
+            </Button>
+          </div>
+        </nav>
+      )}
 
       {/* Content */}
       <section className="mx-auto flex min-h-[75vh] max-w-2xl items-center px-6">
@@ -123,6 +136,16 @@ export function NewRecoveryPage() {
           }}
           className="w-full"
         >
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/recoveries")}
+            aria-label="Back to Home"
+            className="-ml-2 mb-6 h-10 px-2 font-normal text-zinc-500 hover:text-zinc-900"
+          >
+            <ArrowLeft className="size-4" />
+            Back to Home
+          </Button>
+
           <p className="text-sm font-normal text-zinc-500">
             New recovery
           </p>
@@ -132,8 +155,8 @@ export function NewRecoveryPage() {
           </h1>
 
           <p className="mt-5 max-w-lg font-light leading-7 text-zinc-500">
-            Tell RePath what happened to your application. You can paste the
-            rejection notice or briefly explain the problem.
+            Paste the notice you received, or briefly describe what stopped
+            your application.
           </p>
 
           <div className="mt-10">

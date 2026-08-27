@@ -1,271 +1,448 @@
-Implement the authenticated My Recoveries dashboard flow for the existing RePath app.
-
-Inspect the current repository first before changing anything.
-
-Do NOT redesign backend auth.
-Do NOT change Firebase provider configuration.
-Do NOT change Gemini model/config.
-Do NOT call Gemini.
-Do NOT change document validation/final review logic.
-Do NOT change ADK persistence/chat persistence architecture.
-Do NOT commit or push automatically.
-
-CURRENT VERIFIED STATE
-
-Frontend:
-- Firebase Google login works
-- AuthContext persists auth state across refresh
-- authFetch attaches Firebase Bearer token
-- Google login/logout works
-- hard refresh auth race is fixed
-
-Backend:
-- Firebase Admin verifies tokens
-- cases have owner_id / owner_email
-- protected endpoints enforce ownership
-- GET /api/cases returns only the logged-in user’s cases
-- wrong-owner case returns 404
-- no token returns 401
-
-CURRENT UX PROBLEM
-
-The app still feels like a developer tool because users may need to:
-- manually resume using raw Case ID
-- see technical case IDs
-- navigate through the old /resume flow
-
-GOAL
-
-Change the normal user flow to:
-
-Landing
-→ Continue with Google
-→ My Recoveries dashboard
-→ click a recovery
-→ Recovery Workspace
-
-The raw case_id should remain an internal identifier but should not be part of the normal user-facing experience.
-
-IMPLEMENT
-
-1. MY RECOVERIES PAGE
-
-Create a page/route such as:
-
-/recoveries
-
-It should fetch:
-
-GET /api/cases
-
-using the existing authenticated case API/authFetch path.
-
-Display only the current user’s cases.
-
-Each recovery card/row should show user-friendly information such as:
-- title
-- friendly status label
-- short progress/status text
-- updated date if available
-
-Do NOT prominently display raw case_id.
-
-Clicking a recovery should navigate internally to:
-
-/cases/{case_id}
-
-The case_id can still be used in the route internally.
-
-2. FRIENDLY STATUS COPY
-
-Convert internal statuses to human-readable text.
-
-Examples:
-
-recovering
-→ Recovery in progress
-
-waiting_for_documents
-→ Documents needed
-
-ready_for_review
-→ Ready for review
-
-ready_to_resubmit
-→ Ready for resubmission
-
-Avoid exposing raw snake_case statuses.
-
-3. EMPTY STATE
-
-If the user has no recoveries, show a clean empty state such as:
-
-“No recoveries yet.”
-
-Include a clear primary action:
-“Start a recovery”
-
-which navigates to /new.
-
-Keep copy simple and user-friendly.
-
-4. LANDING PAGE AUTH FLOW
-
-Use existing AuthContext.
-
-If user is signed out:
-- show “Continue with Google” as the main auth action
-- keep the existing product explanation/hero
-
-If user is already signed in:
-- show a primary action such as “My Recoveries”
-- optionally show a small account/logout control
-
-Do not force signed-in users through the Case ID resume page.
-
-5. POST-LOGIN NAVIGATION
-
-After successful Google login:
-- navigate to /recoveries
-
-Do not just log to console.
-
-Preserve clean error handling.
-
-6. START RECOVERY FLOW
-
-Authenticated users should be able to start a new recovery from:
-- Landing
-- My Recoveries dashboard
-
-After a new case is created, preserve the existing workspace navigation behavior if already working.
-
-Do not redesign the agent flow.
-
-7. RESUME CASE PAGE
-
-Keep the /resume route only if useful as a fallback/dev compatibility path.
-
-It should no longer be the normal primary CTA.
-
-Do not delete backend case_id support.
-
-8. NAVIGATION
-
-Update normal navigation so authenticated users can move between:
-- My Recoveries
-- Start recovery
-- Logout
-
-Keep it minimal.
-
-Do not introduce a full complex sidebar unless one already exists.
-
-9. USER-FRIENDLY CONTENT
-
-Replace developer-ish visible wording where encountered in this flow.
-
-Examples:
-
-“Case ID”
-→ hide from normal UX
-
-“Resume a case”
-→ “My Recoveries” or remove as primary CTA
-
-“ready_to_resubmit”
-→ “Ready for resubmission”
-
-Keep the RePath tone:
-- calm
-- clear
-- trustworthy
-- professional
-- not overly technical
-
-10. AUTH LOADING STATE
-
-Respect AuthContext loading.
-
-Do not redirect/render the wrong logged-in/logged-out state while Firebase is still restoring auth.
-
-Avoid flashing the signed-out landing UI for authenticated users during initialization if possible.
-
-11. ACCESS BEHAVIOR
-
-If an unauthenticated user tries to open /recoveries:
-- redirect them to the landing/login flow
-
-If an authenticated user opens /recoveries:
-- load only their own cases
-
-Do not change backend ownership behavior.
-
-12. VISUAL STYLE
-
-Keep current RePath visual identity:
-
+Implement the final UI/UX polish pass for the existing RePath frontend based on the completed audit.
+
+IMPORTANT
+- Inspect the current frontend first.
+- Do NOT add new product features.
+- Do NOT redesign the product from scratch.
+- Do NOT modify backend logic.
+- Do NOT modify Firebase auth architecture.
+- Do NOT modify Gemini/ADK behavior.
+- Do NOT call Gemini.
+- Do NOT commit or push automatically.
+
+PRODUCT IDENTITY
+
+RePath is a recovery assistant for rejected, incomplete, or stalled document-based applications.
+
+Keep the current visual identity:
 - off-white #fafafa
 - near-black text
-- muted indigo accents
-- Geist
-- light/thin typography
-- clean spacing
-- subtle borders
+- restrained indigo accents
+- Geist typography
+- light/thin weights
 - Lucide icons
+- subtle borders
+- generous whitespace
+- calm civic-tech / productivity SaaS feel
 - no gradients
 - no glow
 - no glassmorphism
-- no flashy AI dashboard style
+- no flashy AI-chatbot aesthetic
+- no emojis in product UI
 
-This task is structural UX, not the final polish pass.
+PRIMARY GOAL
 
-13. DO NOT TOUCH
+Make the current working product feel:
+- understandable to non-technical users
+- calm
+- trustworthy
+- accessible
+- consistent
+- production-ready
+
+Use:
+- Nielsen usability heuristics
+- WCAG 2.2
+- ISO 9241 usability principles
+
+DO NOT add features.
+
+IMPLEMENT THESE CHANGES
+
+1. REMOVE DEVELOPER / INTERNAL WORDING
+
+Replace user-facing technical language.
+
+Examples:
+
+"deterministic review"
+→ "final check" or "readiness check"
+
+"Complete a final deterministic review before this recovery case is marked ready for resubmission."
+→ "Check that the required documents are ready before marking this recovery for resubmission."
+
+"Recovery is complete based on the current deterministic review rules and is ready for resubmission."
+→ "This recovery is ready for resubmission based on the documents currently in this case."
+
+"real agent API"
+→ user-facing wording about the recovery/conversation
+
+"Messages are linked to this recovery case when the real agent API is enabled."
+→ "Messages in this conversation stay connected to this recovery."
+
+"FastAPI or Gemini"
+→ remove from normal user-facing copy
+
+Mock/development-specific implementation details should not appear in normal product UX.
+
+2. FINAL REVIEW COPY
+
+Use user-friendly terminology.
+
+Prefer:
+"Check readiness"
+
+instead of:
+"Complete final review"
+
+Keep the meaning accurate.
+
+Do NOT claim:
+- submitted
+- approved
+- accepted by external institution
+- guaranteed success
+
+Ready to resubmit means only that RePath's current recovery checks are complete.
+
+3. DOCUMENT STATUS COPY
+
+Replace ambiguous/internal status labels.
+
+Suggested:
+
+valid
+→ "Accepted"
+
+uploaded
+→ "Uploaded, needs check"
+
+validating
+→ "Checking..."
+
+needs_attention
+→ "Needs a fix"
+
+missing
+→ "Missing"
+
+Also change:
+
+"Validate documents"
+→ "Check documents"
+
+"No missing documents recorded."
+→ "No documents are missing right now."
+
+"No missing requirements recorded."
+→ "No requirements are missing right now."
+
+Ensure status wording is consistent across the app.
+
+4. SHARED STATUS LABELS
+
+There is duplicated status formatting across:
+- RecoveriesPage
+- RecoveryWorkspacePage
+- OverviewSection
+and possibly other components.
+
+Create one minimal shared helper/constant for case status labels.
+
+Expected labels:
+
+recovering
+→ "Recovery in progress"
+
+waiting_for_documents
+→ "Documents needed"
+
+ready_for_review
+→ "Ready for review"
+
+ready_to_resubmit
+→ "Ready for resubmission"
+
+Avoid exposing raw snake_case values.
+
+Do not over-refactor.
+
+5. RECOVERY WORKSPACE ERROR FLOW
+
+If an authenticated user cannot load a recovery:
+
+Do NOT send them back to the legacy /resume Case ID flow.
+
+Change normal recovery error action to:
+
+"Back to recoveries"
+
+and navigate to:
+
+/recoveries
+
+Keep /resume only as fallback compatibility if it already exists.
+
+6. LEGACY /RESUME UX
+
+Do not delete the route.
+
+But make sure:
+- it is not a primary navigation path
+- normal authenticated users are not routed there unnecessarily
+
+If its copy is still very developer-oriented, improve it.
+
+Suggested:
+
+"Open a recovery from your saved list. If support gave you a recovery ID, enter it here."
+
+Do not prominently expose raw Case ID elsewhere.
+
+7. CHAT SEND BUTTON ACCESSIBILITY
+
+In RecoveryConversation:
+
+Add an accessible name to the icon-only send button:
+
+aria-label="Send message"
+
+Preserve current visual appearance.
+
+8. DOCUMENT UPLOAD KEYBOARD ACCESSIBILITY
+
+Current upload control uses a hidden file input with a visual replacement.
+
+Fix keyboard/focus accessibility.
+
+Use one of:
+- visually hidden input + accessible focusable label/control
+or
+- a real button that triggers the file input
+
+Requirements:
+- keyboard users can focus it
+- Enter/Space can open file picker where appropriate
+- visible focus style exists
+- accessible name clearly says Upload/Replace document
+
+Do not change upload behavior.
+
+9. WORKSPACE NAVIGATION SEMANTICS
+
+The active section state must not be visual-only.
+
+Add:
+aria-current="page"
+
+to the active workspace navigation item.
+
+Do not convert to full ARIA tab behavior unless current architecture truly behaves like tabs and it can be done safely.
+
+Keep the implementation minimal.
+
+10. RECOVERY STEPS SEMANTICS
+
+Where recovery steps are a sequential process, use semantic:
+
+<ol>
+<li>
+
+instead of repeated generic divs where practical.
+
+Preserve current visual timeline.
+
+11. MOBILE STATUS VISIBILITY
+
+On mobile, do not leave only an unexplained colored dot.
+
+Keep a compact readable status label visible where practical.
+
+Example:
+"Ready for review"
+
+Make sure it does not destroy the header layout.
+
+12. MOBILE WORKSPACE NAVIGATION
+
+Review narrow-width behavior.
+
+Keep:
+- Overview
+- Documents
+- Recovery
+- Agent
+
+discoverable on small screens.
+
+If horizontal scrolling remains, ensure it is usable and not accidentally clipped.
+
+Do not overdesign.
+
+13. GOOGLE LOGIN ERROR FEEDBACK
+
+LandingPage currently logs login failure to console.
+
+Add visible, calm inline error feedback near the login action.
+
+Suggested:
+
+"We couldn't complete Google sign-in. Please try again."
+
+Do not expose Firebase error codes to users.
+
+Keep console logging if useful for development.
+
+14. LOGOUT ERROR FEEDBACK
+
+If logout fails, show a small visible error.
+
+Suggested:
+
+"We couldn't sign you out. Please try again."
+
+Do not leave the user guessing.
+
+15. AUTH LOADING STATE
+
+When auth is restoring/loading on LandingPage:
+
+Do not leave the main action area visually empty.
+
+Use a subtle disabled/loading state such as:
+
+"Checking sign-in..."
+
+Keep it minimal.
+
+16. RECOVERIES ACCESSIBILITY
+
+Each recovery row/button should have an accessible action name.
+
+Example:
+
+aria-label={`Open recovery: ${recovery.title}`}
+
+Preserve visible text.
+
+17. RECOVERIES EMPTY / ERROR / LOADING
+
+Keep the current successful separation between:
+- loading
+- error
+- success
+- empty
+
+Do not reintroduce the earlier race/flicker.
+
+Improve only wording if needed.
+
+18. NEW RECOVERY COPY
+
+Keep:
+"What happened?"
+
+Improve supporting copy to something like:
+
+"Paste the notice you received, or briefly describe what stopped your application."
+
+Avoid technical instructions unless necessary.
+
+If a recovery has been saved/created and the UI already knows that, make the saved state clearer with existing information only.
+
+Do NOT add a new backend feature.
+
+19. GENERAL ERROR COPY
+
+Replace vague/system-like messages when encountered.
+
+Examples:
+
+"Document request failed."
+→ "We couldn't update this document. Please try again."
+
+"We couldn't load this recovery case."
+→ "We couldn't load this recovery. Return to My Recoveries and try again."
+
+Keep error messages:
+- concise
+- non-blaming
+- actionable
+
+20. TOUCH TARGETS
+
+Review major interactive buttons on mobile.
+
+Primary/important controls should generally be at least around 40px tall where practical.
+
+Do not globally enlarge every tiny control without reason.
+
+21. VISUAL CONSISTENCY
+
+Fix obvious inconsistencies only.
+
+Examples:
+- signed-in landing nav should use consistent flex/alignment
+- section heading hierarchy may be strengthened slightly
+- consistent spacing between icon/text
+- consistent active/hover/focus states
+
+Do not redesign cards/layouts wholesale.
+
+22. FOCUS STATES
+
+Review:
+- buttons
+- upload controls
+- nav controls
+- form inputs
+- icon-only controls
+
+Ensure keyboard focus is visible.
+
+Preserve current style system.
+
+23. CLEANUP
+
+Remove obsolete commented starter/demo CSS if clearly unused.
+
+Do not perform broad unrelated refactors.
+
+24. DO NOT TOUCH
 
 Do not modify:
-- backend ownership model
+- Firebase auth ownership model
+- backend auth verification
 - Firestore schema
-- document lifecycle
-- final review
+- case ownership
+- document validation logic
+- final review logic
+- recovery status transitions
 - Agent tools/instructions
 - Gemini model
-- persistent ADK sessions
-- visible chat history architecture
+- ADK session persistence
+- chat persistence architecture
+- deployment configuration
 - demo/presentation assets
 
-14. VERIFICATION
+25. VERIFICATION
 
-Do not call Gemini.
+Do NOT call Gemini.
 
 Run:
-- frontend build
-- lint if configured
+- npm run build
+- npm run lint
 - git diff --check
 
-Manual QA targets:
-- signed-out landing shows Google login
-- login redirects to /recoveries
-- /recoveries lists only owned cases
-- case cards use friendly labels
-- clicking a case opens workspace
-- raw Case ID is not prominently shown
-- empty state works
-- start recovery works
-- logout works
-- hard refresh on /recoveries remains authenticated
-- hard refresh on owned workspace still works
-- unauthenticated /recoveries redirects appropriately
+If lint reports warnings:
+- distinguish existing warnings from newly introduced ones
+- fix new accessibility/usability warnings when practical
+- do not over-refactor unrelated existing warnings
 
 WHEN FINISHED
 
-Do not commit or push.
+Do NOT commit or push.
 
 Report:
 1. files changed
-2. new route(s)
-3. dashboard behavior
-4. login redirect behavior
-5. how statuses are converted to friendly labels
-6. whether /resume was kept and how
-7. exact manual QA steps
-8. confirm no Gemini requests were sent
+2. copy/content changes
+3. accessibility changes
+4. navigation changes
+5. mobile changes
+6. visual consistency changes
+7. any audit items intentionally left unchanged and why
+8. build result
+9. lint result
+10. git diff --check result
+11. confirm no Gemini requests were sent
+12. exact manual QA checklist for my final review

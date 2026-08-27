@@ -221,7 +221,7 @@ export function RecoveryConversation({
 
             <p className="max-w-2xl text-sm font-light leading-7 text-zinc-600">
               Ask me about this recovery case, the remaining steps, or
-              what ready to resubmit means.
+              what it means when your recovery is ready to resubmit.
             </p>
           </div>
         )}
@@ -286,6 +286,7 @@ export function RecoveryConversation({
               size="icon"
               onClick={handleSend}
               disabled={!input.trim() || loading}
+              aria-label="Send message"
               className="absolute bottom-3 right-3 size-9 rounded-md"
             >
               <ArrowUp className="size-4" />

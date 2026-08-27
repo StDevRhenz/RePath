@@ -4,11 +4,12 @@ import { motion } from "motion/react";
 import { ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { AuthenticatedTopNav } from "@/components/navigation/AuthenticatedTopNav";
 
 import { OverviewSection } from "@/components/recovery/workspace/OverviewSection";
 import { DocumentsSection } from "@/components/recovery/workspace/DocumentsSection";
 import { RecoverySection } from "@/components/recovery/workspace/RecoverySection";
-import { AgentSection } from "@/components/recovery/workspace/AgentSection";
+import { WorkspaceAssistantPanel } from "@/components/recovery/workspace/WorkspaceAssistantPanel";
 
 import {
   WorkspaceNavigation,
@@ -19,6 +20,10 @@ import {
   getCase,
   type RecoveryCase,
 } from "@/services/caseApi";
+import {
+  getCaseStatusLabel,
+  getRecoveryProgress,
+} from "@/lib/statusLabels";
 
 export function RecoveryWorkspacePage() {
   const navigate = useNavigate();
@@ -32,10 +37,11 @@ export function RecoveryWorkspacePage() {
 
   const [activeSection, setActiveSection] =
     useState<WorkspaceSection>("overview");
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   useEffect(() => {
     if (!caseId) {
-      setError("Invalid case ID.");
+      setError("We couldn't load this recovery.");
       setLoading(false);
       return;
     }
@@ -43,7 +49,7 @@ export function RecoveryWorkspacePage() {
     getCase(caseId)
       .then(setRecoveryCase)
       .catch(() => {
-        setError("We couldn't load this recovery case.");
+        setError("We couldn't load this recovery. Return to My Recoveries and try again.");
       })
       .finally(() => {
         setLoading(false);
@@ -79,11 +85,11 @@ export function RecoveryWorkspacePage() {
 
           <Button
             variant="outline"
-            onClick={() => navigate("/resume")}
+            onClick={() => navigate("/recoveries")}
             className="mt-5 font-normal"
           >
             <ArrowLeft className="size-4" />
-            Back
+            Back to recoveries
           </Button>
         </div>
       </main>
@@ -93,28 +99,17 @@ export function RecoveryWorkspacePage() {
   return (
     <main className="min-h-screen bg-[#fafafa] text-zinc-950">
       {/* Header */}
-      <header className="border-b border-zinc-200/80 bg-white">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 lg:px-8">
-          <button
-            onClick={() => navigate("/")}
-            className="text-xl font-normal tracking-tight"
-          >
-            RePath
-          </button>
+      <AuthenticatedTopNav />
 
-          <div className="flex items-center gap-2 text-sm text-zinc-500">
-            <span className="size-1.5 rounded-full bg-indigo-500" />
-
-            <span className="hidden sm:inline">
-              {formatStatus(recoveryCase.status)}
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-7xl lg:grid-cols-[210px_1fr]">
+      <div
+        className={`mx-auto grid w-full max-w-7xl overflow-x-clip lg:grid-cols-[210px_minmax(0,1fr)] ${
+          assistantOpen
+            ? "xl:max-w-[100rem] xl:grid-cols-[210px_minmax(0,1fr)_clamp(360px,28vw,420px)]"
+            : "xl:grid-cols-[210px_minmax(0,1fr)_0px]"
+        }`}
+      >
         {/* Desktop Navigation */}
-        <aside className="hidden min-h-[calc(100vh-4rem)] border-r border-zinc-200/80 px-5 py-8 lg:block">
+        <aside className="hidden min-h-[calc(100vh-4rem)] self-start border-r border-zinc-200/80 px-5 py-8 lg:sticky lg:top-16 lg:block">
           <WorkspaceNavigation
             activeSection={activeSection}
             onChange={setActiveSection}
@@ -149,6 +144,16 @@ export function RecoveryWorkspacePage() {
           >
             {/* Case Heading */}
             <div className="max-w-3xl">
+              <Button
+                variant="ghost"
+                onClick={() => navigate("/recoveries")}
+                aria-label="Back to Home"
+                className="-ml-2 mb-6 h-10 px-2 font-normal text-zinc-500 hover:text-zinc-900"
+              >
+                <ArrowLeft className="size-4" />
+                Back to Home
+              </Button>
+
               <p className="text-xs font-normal uppercase tracking-[0.14em] text-zinc-400">
                 Recovery case
               </p>
@@ -157,12 +162,35 @@ export function RecoveryWorkspacePage() {
                 {recoveryCase.title}
               </h1>
 
+              <div className="mt-5 max-w-2xl border-y border-zinc-200 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-normal text-zinc-900">
+                      {getCaseStatusLabel(recoveryCase.status)}
+                    </p>
+                    <p className="mt-1 text-sm font-light text-zinc-500">
+                      {getRecoveryProgress(recoveryCase.status)}% toward ready for resubmission
+                    </p>
+                  </div>
+
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 sm:w-40">
+                    <div
+                      className="h-full rounded-full bg-indigo-500"
+                      style={{
+                        width: `${getRecoveryProgress(recoveryCase.status)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
             </div>
 
             {activeSection === "overview" && (
               <OverviewSection
                 recoveryCase={recoveryCase}
                 onCaseUpdated={refreshRecoveryCase}
+                onSectionChange={setActiveSection}
               />
             )}
 
@@ -179,26 +207,16 @@ export function RecoveryWorkspacePage() {
               />
             )}
 
-            {activeSection === "agent" && (
-              <AgentSection
-                recoveryCase={recoveryCase}
-                onCaseUpdated={refreshRecoveryCase}
-              />
-            )}
           </motion.section>
         </div>
+
+        <WorkspaceAssistantPanel
+          recoveryCase={recoveryCase}
+          onCaseUpdated={refreshRecoveryCase}
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+        />
       </div>
     </main>
   );
-}
-
-function formatStatus(status: string) {
-  const labels: Record<string, string> = {
-    recovering: "Recovery in progress",
-    waiting_for_documents: "Documents needed",
-    ready_for_review: "Ready for review",
-    ready_to_resubmit: "Ready for resubmission",
-  };
-
-  return labels[status] ?? "Recovery in progress";
 }

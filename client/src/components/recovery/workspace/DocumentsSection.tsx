@@ -55,7 +55,15 @@ export function DocumentsSection({
         (document) => document.document_name
       ),
     ]),
-  ];
+  ].sort((firstName, secondName) => {
+    const firstDocument = documentsByName.get(firstName);
+    const secondDocument = documentsByName.get(secondName);
+
+    return (
+      getDocumentSortRank(firstDocument) -
+      getDocumentSortRank(secondDocument)
+    );
+  });
   const hasActiveDocumentRequest =
     validatingDocuments ||
     Object.values(uploadingDocuments).some(Boolean) ||
@@ -202,9 +210,17 @@ export function DocumentsSection({
               Boolean(isUploading),
               Boolean(isValidating)
             );
+            const rowClassName =
+              caseDocument?.status === "valid"
+                ? "py-5 opacity-70"
+                : "py-5";
+            const actionLabel = getDocumentActionLabel(
+              caseDocument,
+              Boolean(isUploading)
+            );
             
             return (
-              <div key={documentName} className="py-5">
+              <div key={documentName} className={rowClassName}>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-center gap-4">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
@@ -247,15 +263,17 @@ export function DocumentsSection({
                     </span>
 
                     <label
+                      htmlFor={`document-${documentName}`}
                       className={
                         isDocumentActionDisabled
                           ? "cursor-not-allowed opacity-50"
-                          : "cursor-pointer"
+                            : "cursor-pointer"
                       }
                     >
                       <input
+                        id={`document-${documentName}`}
                         type="file"
-                        className="hidden"
+                        className="sr-only"
                         accept=".pdf,.png,.jpg,.jpeg"
                         disabled={isDocumentActionDisabled}
                         onChange={(event) =>
@@ -266,8 +284,8 @@ export function DocumentsSection({
                         }
                       />
 
-                      <span className="inline-flex h-9 items-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-normal text-zinc-700 transition-colors hover:bg-zinc-50">
-                        {caseDocument ? "Replace" : "Add document"}
+                      <span className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-normal text-zinc-700 transition-colors hover:bg-zinc-50 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2">
+                        {actionLabel}
                       </span>
                     </label>
 
@@ -296,7 +314,7 @@ export function DocumentsSection({
             />
 
             <p className="text-sm font-light text-zinc-500">
-              No missing documents recorded.
+              No documents are missing right now.
             </p>
           </div>
         )}
@@ -319,7 +337,7 @@ export function DocumentsSection({
               "Validating..."
             ) : (
               <>
-                Validate documents
+                Check documents
                 <Check className="size-4" />
               </>
             )}
@@ -350,21 +368,21 @@ function getStatusLabel(
   }
 
   if (isValidating) {
-    return "Validating...";
+    return "Checking...";
   }
 
   switch (document?.status) {
     case "valid":
-      return "Ready";
+      return "Accepted";
 
     case "needs_attention":
-      return "Needs Attention";
+      return "Needs a fix";
 
     case "validating":
-      return "Validating...";
+      return "Checking...";
 
     case "uploaded":
-      return "Uploaded";
+      return "Uploaded, needs check";
 
     default:
       return "Missing";
@@ -391,10 +409,47 @@ function getStatusClassName(
   return "border-zinc-200 bg-white text-zinc-500";
 }
 
+function getDocumentSortRank(document: CaseDocument | undefined) {
+  switch (document?.status) {
+    case undefined:
+      return 0;
+
+    case "needs_attention":
+      return 1;
+
+    case "uploaded":
+      return 2;
+
+    case "validating":
+      return 3;
+
+    case "valid":
+      return 4;
+
+    default:
+      return 5;
+  }
+}
+
+function getDocumentActionLabel(
+  document: CaseDocument | undefined,
+  isUploading: boolean
+) {
+  if (isUploading) {
+    return "Uploading...";
+  }
+
+  if (!document) {
+    return "Upload";
+  }
+
+  return "Replace";
+}
+
 function getRequestErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
   }
 
-  return "Document request failed.";
+  return "We couldn't update this document. Please try again.";
 }

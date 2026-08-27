@@ -67,7 +67,7 @@ export async function validateCaseDocuments(
 
   if (!response.ok) {
     throw new Error(
-      await getErrorMessage(response, "Failed to validate documents.")
+      await getErrorMessage(response, "We couldn't check these documents. Please try again.")
     );
   }
 

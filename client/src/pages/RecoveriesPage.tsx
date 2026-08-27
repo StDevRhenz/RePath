@@ -1,19 +1,13 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, LogOut, Plus } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
-import { logout } from "@/services/authService";
 import { getMyCases, type RecoveryCase } from "@/services/caseApi";
-
-const statusCopy: Record<string, string> = {
-  recovering: "Recovery in progress",
-  waiting_for_documents: "Documents needed",
-  ready_for_review: "Ready for review",
-  ready_to_resubmit: "Ready for resubmission",
-};
+import { getCaseStatusLabel } from "@/lib/statusLabels";
+import { AuthenticatedTopNav } from "@/components/navigation/AuthenticatedTopNav";
 
 type RecoveriesRequestStatus =
   | "idle"
@@ -65,11 +59,6 @@ export function RecoveriesPage() {
     };
   }, [authLoading, navigate, user]);
 
-  async function handleLogout() {
-    await logout();
-    navigate("/", { replace: true });
-  }
-
   if (authLoading || requestStatus === "idle") return <LoadingState />;
   if (!user) return null;
 
@@ -79,26 +68,13 @@ export function RecoveriesPage() {
 
   return (
     <main className="min-h-screen bg-[#fafafa] text-zinc-950">
-      <header className="border-b border-zinc-200/80 bg-white">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 lg:px-8">
-          <button onClick={() => navigate("/")} className="text-xl font-normal tracking-tight">RePath</button>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => navigate("/new")} className="font-normal">
-              <Plus className="size-4" />
-              Start a recovery
-            </Button>
-            <Button variant="ghost" onClick={handleLogout} aria-label="Log out">
-              <LogOut className="size-4" />
-            </Button>
-          </div>
-        </div>
-      </header>
+      <AuthenticatedTopNav />
 
       <section className="mx-auto max-w-5xl px-6 py-12 lg:px-8 lg:py-16">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <p className="text-sm font-normal text-zinc-500">Your recoveries</p>
-          <h1 className="mt-3 text-4xl font-light tracking-[-0.035em] sm:text-5xl">My Recoveries</h1>
-          <p className="mt-4 max-w-xl font-light leading-7 text-zinc-500">Pick up where you left off or start a new recovery.</p>
+          <p className="text-sm font-normal text-zinc-500">Home</p>
+          <h1 className="mt-3 text-4xl font-light tracking-[-0.035em] sm:text-5xl">Pick up where you left off</h1>
+          <p className="mt-4 max-w-xl font-light leading-7 text-zinc-500">Open an application you’re working on or start a new one.</p>
         </motion.div>
 
         {loading && <p className="mt-12 text-sm font-light text-zinc-500">Loading recoveries...</p>}
@@ -118,10 +94,10 @@ export function RecoveriesPage() {
         {hasLoaded && recoveries.length > 0 && (
           <div className="mt-12 divide-y divide-zinc-200 border-y border-zinc-200">
             {recoveries.map((recovery) => (
-              <button key={recovery.case_id} onClick={() => navigate(`/cases/${recovery.case_id}`)} className="group flex w-full items-center justify-between gap-6 py-6 text-left transition-colors hover:bg-white">
+              <button key={recovery.case_id} onClick={() => navigate(`/cases/${recovery.case_id}`)} aria-label={`Open recovery: ${recovery.title}`} className="group flex min-h-16 w-full items-center justify-between gap-6 py-6 text-left transition-colors hover:bg-white">
                 <span className="min-w-0">
                   <span className="block truncate text-lg font-normal">{recovery.title}</span>
-                  <span className="mt-2 block text-sm font-light text-zinc-500">{statusCopy[recovery.status] ?? "Recovery in progress"}</span>
+                  <span className="mt-2 block text-sm font-light text-zinc-500">{getCaseStatusLabel(recovery.status)}</span>
                   {recovery.updated_at && (
                     <span className="mt-1 block text-xs font-light text-zinc-400">
                       Updated {formatDate(recovery.updated_at)}
