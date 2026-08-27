@@ -154,6 +154,14 @@ async def send_agent_message(
         case_id=case_id,
     )
 
+    recovery_case = None
+
+    if case_id:
+        recovery_case = get_case(case_id)
+
+        if recovery_case is None:
+            raise AgentCaseNotFoundError()
+
     if case_id:
         try:
             saved_message = save_case_message(
@@ -168,10 +176,16 @@ async def send_agent_message(
         if saved_message is None:
             raise AgentCaseNotFoundError()
 
+    agent_message = (
+        build_case_context_message(recovery_case, message)
+        if recovery_case
+        else message
+    )
+
     content = types.Content(
         role="user",
         parts=[
-            types.Part(text=message),
+            types.Part(text=agent_message),
         ],
     )
 
@@ -212,3 +226,53 @@ async def send_agent_message(
 def ensure_session_store_ready() -> None:
     if session_service_error is not None or session_service is None or runner is None:
         raise AgentSessionStoreError() from session_service_error
+
+
+def build_case_context_message(
+    recovery_case: dict,
+    user_message: str,
+) -> str:
+    missing_documents = recovery_case.get("missing_documents", [])
+    recovery_steps = recovery_case.get("recovery_steps", [])
+    documents = recovery_case.get("documents", [])
+
+    document_statuses = [
+        (
+            f"- {document.get('document_name', 'Unnamed document')}: "
+            f"{document.get('status', 'unknown')}"
+        )
+        for document in documents
+    ]
+
+    context_lines = [
+        "Current RePath recovery case context:",
+        f"- case_id: {recovery_case.get('case_id')}",
+        f"- title: {recovery_case.get('title')}",
+        f"- status: {recovery_case.get('status')}",
+        "- missing_documents: "
+        + (", ".join(missing_documents) if missing_documents else "none"),
+        "Recovery steps:",
+        *[
+            f"- {step}"
+            for step in recovery_steps[:8]
+        ],
+    ]
+
+    if not recovery_steps:
+        context_lines.append("- none recorded")
+
+    context_lines.extend([
+        "Uploaded recovery document statuses:",
+        *(document_statuses[:10] or ["- none uploaded"]),
+        "",
+        "Instruction for this turn:",
+        "This is an existing recovery case. Do not ask the user for the Case ID.",
+        "Do not restart onboarding or ask for the rejection notice unless it is directly needed.",
+        "Answer in relation to the current recovery case status and next steps.",
+        "Do not claim the application was submitted, approved, or guaranteed.",
+        "",
+        "User message:",
+        user_message,
+    ])
+
+    return "\n".join(context_lines)

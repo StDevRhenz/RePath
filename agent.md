@@ -1,224 +1,240 @@
 You are continuing work on my existing RePath project.
 
-Before changing anything, inspect the repository and existing implementation.
+Before changing anything, inspect the repository and current implementation.
 
 Do NOT rebuild working features.
-Do NOT modify document upload/validation/final review.
 Do NOT modify Gemini model configuration.
 Do NOT consume Gemini requests during implementation/testing.
 Do NOT commit or push automatically.
 Do NOT refactor unrelated files.
+Do NOT add demo/presentation content yet.
 
 CURRENT VERIFIED STATE
 
 RePath already has:
 
-Frontend:
+Frontend
+- Landing
+- New Recovery
+- Resume Case
 - Recovery Workspace
+- Overview
+- Documents
+- Recovery
 - Agent tab
-- case-aware Agent messaging
-- persistent visible chat history
-- mock mode
-- friendly 429 handling
+- persistent visible Agent chat history
+- mock Agent mode
 
-Backend:
+Backend
 - FastAPI
-- Google ADK Runner
-- InMemorySessionService
-- case_id ↔ agent_session_id linkage
-- Firestore chat history
-- automatic fresh-session recovery if an in-memory session disappears
-
-Current problem:
-
-The actual ADK conversational session is still stored only in:
-
-InMemorySessionService
-
-Therefore when the backend restarts:
-- Firestore chat history still renders
-- agent_session_id still exists
-- but ADK hidden conversation state is gone
-- backend creates a new session
-
-GOAL
-
-Replace or augment the current in-memory ADK session handling with a persistent ADK-supported session strategy so conversation context survives backend restarts.
-
-IMPORTANT:
-Use Google ADK-supported persistence if available in the currently installed google-adk version.
-Do NOT invent a custom fake ADK memory format if ADK already provides a supported persistent SessionService.
-
-FIRST STEP
-
-Before implementing:
-1. inspect installed google-adk version and available session service classes
-2. inspect the current agent_service.py architecture
-3. choose the simplest officially supported persistent SessionService available in this environment
-
-Prefer a supported database-backed SessionService if available.
-
-Do NOT start by manually serializing hidden ADK session internals into Firestore.
-
-IMPLEMENTATION REQUIREMENTS
-
-1. PERSISTENT SESSION SERVICE
-
-Replace:
-
-InMemorySessionService
-
-with the simplest appropriate persistent ADK SessionService supported by the installed version.
-
-Potential examples may include database-backed session services, but VERIFY actual available APIs before using them.
-
-Use a local development database if appropriate, such as SQLite, so we can prove persistence across backend restarts without adding unnecessary cloud infrastructure.
-
-Keep the implementation easy to migrate later.
-
-2. SESSION DATABASE LOCATION
-
-If using SQLite or another local persistence file:
-
-store it somewhere intentional under server data/runtime storage, for example:
-
-server/data/adk_sessions.db
-
-or another clean path.
-
-Do not put generated runtime database files into Git.
-
-Update .gitignore appropriately.
-
-3. EXISTING SESSION LINKAGE
-
-Preserve the existing Firestore field:
-
-agent_session_id
-
-Do not remove it.
-
-Flow should remain:
-
-case_id
-→ Firestore agent_session_id
-→ persistent ADK session store
-→ continue same ADK session
-
-4. EXISTING SESSION RECOVERY
-
-If Firestore points to a session that truly does not exist in the persistent session store:
-
-- create a fresh ADK session
-- update agent_session_id
-- continue safely
-
-Do not crash.
-
-5. BACKWARD COMPATIBILITY
-
-Existing recovery cases may:
-- have no agent_session_id
-- have an agent_session_id created while InMemorySessionService was used
-- point to a session that does not exist in the new persistent store
-
-Handle all of these cases gracefully.
-
-6. CHAT HISTORY
-
-Do NOT replace Firestore chat-history persistence.
-
-Firestore chat history and ADK session persistence serve different purposes:
-
-Firestore messages:
-- visible user/agent chat history
-
-ADK session store:
-- hidden agent conversational/session state
-
-Keep both.
-
-7. MOCK MODE
-
-USE_MOCK_AGENT = true must remain completely unaffected.
-
-Mock mode:
-- must not create real ADK sessions
-- must not touch persistent ADK session storage
-- must not call Gemini
-
-8. NO AUTOMATIC GEMINI TESTING
-
-Do NOT send Gemini requests during implementation.
-
-Static verification is enough:
-- imports resolve
-- server compiles
-- application starts if possible
-- session store can create/load a session without invoking Gemini
-
-9. ERROR HANDLING
-
-Handle:
-- persistent session store initialization failure
-- missing/expired session
-- database file/path problems
-- Firestore session-link update failure
-
-Return clean errors.
-Do not leak secrets or stack traces.
-
-10. CONFIGURATION
-
-Avoid hardcoding production-specific paths where possible.
-
-If useful, introduce a small environment/config value such as:
-
-ADK_SESSION_DB_URL
-
-with a safe local development default.
-
-Do not expose secrets.
-
-11. DO NOT TOUCH
-
-Do NOT modify:
-- Gemini model
-- Agent instructions/tools
-- document flow
+- Firestore
+- Google ADK
+- persistent recovery cases
+- document upload
+- replace/remove lifecycle
+- deterministic document validation
 - final review
-- recovery progress
-- demo documents
+- ready_to_resubmit state
+- case_id ↔ agent_session_id linkage
+- persistent ADK session storage using DatabaseSessionService
+- Firestore-backed visible chat history
+
+Current goal:
+
+Perform a targeted edge-case / robustness pass on existing functionality.
+
+Do NOT add major new features.
+
+TEST AND FIX THESE AREAS
+
+1. INVALID CASE IDs
+
+Check all relevant endpoints and pages for:
+- missing case_id
+- malformed/nonexistent case_id
+- case removed from Firestore while page is open
+
+Expected:
+- clean 404 or friendly frontend error
+- no uncaught crash
+
+2. DOCUMENT UPLOAD EDGE CASES
+
+Check:
+- unsupported MIME type
+- empty file
+- missing filename
+- missing document_name
+- arbitrary document_name not part of the case
+- duplicate rapid upload requests
+- replace while a previous upload is still in progress
+- large files
+
+Add a sensible backend file-size limit if none exists.
+
+Recommended:
+- define a configurable max size
+- default around 10 MB for MVP
+- return HTTP 413 for oversized files
+
+Do not consume Gemini.
+
+3. DOCUMENT VALIDATION EDGE CASES
+
+Check:
+- Firestore metadata exists but local physical file is missing
+- empty physical file
+- unsupported stored content type
+- validation called with no uploaded documents
+- validation called twice quickly
+- validation called after case is already ready_for_review or ready_to_resubmit
+
+Expected:
+- clean statuses/errors
+- no duplicate state corruption
+
+4. DOCUMENT REMOVE / REPLACE
+
+Check:
+- remove document that does not exist
+- remove while another request is active
+- replace a valid document
+- replacing should return it to uploaded/unvalidated state
+- old physical file should be removed
+- Firestore should contain only one logical document per document_name
+
+5. FINAL REVIEW EDGE CASES
+
+Check:
+- final review while case is not ready_for_review
+- missing_documents not empty
+- one document not valid
+- stored file missing
+- final review called twice
+- final review after ready_to_resubmit
+
+Expected:
+- reject invalid transitions
+- no duplicate/incorrect state changes
+- useful error messages
+
+6. AGENT API EDGE CASES
+
+Do NOT send real Gemini requests.
+
+Review handling for:
+- no message
+- blank/whitespace-only message
+- unknown case_id
+- stale agent_session_id
+- persistent session DB unavailable
+- Firestore session-link failure
+- Gemini 429
+- generic backend agent failure
+
+Frontend should show useful errors and remain usable.
+
+7. CHAT HISTORY EDGE CASES
+
+Check:
+- no messages
+- only user message exists because Gemini failed
+- duplicate save attempts
+- message ordering
+- refresh while history is loading
+- unknown case
+- Firestore read failure
+
+Do not persist mock messages.
+
+8. RAPID / DUPLICATE USER ACTIONS
+
+Inspect UI buttons for accidental double submission.
+
+Important actions:
+- Continue
+- Add/Replace document
+- Validate documents
+- Remove
+- Complete final review
+- Agent send
+
+Buttons should be disabled appropriately while request is active.
+
+Avoid duplicate API writes.
+
+9. REFRESH DURING REQUEST
+
+Review what happens if user refreshes while:
+- upload is running
+- validation is running
+- final review is running
+- Agent request is running
+
+Do not add complicated recovery infrastructure.
+
+Just make sure persisted backend state remains authoritative and page reload does not corrupt state.
+
+10. FRONTEND ERROR STATES
+
+Make sure errors:
+- are readable
+- do not expose stack traces
+- do not leave buttons permanently disabled
+- can recover after retry where appropriate
+
+11. FIRESTORE CONSISTENCY
+
+Review:
+- missing_documents
+- documents
+- status
+- agent_session_id
+
+Make sure existing mutations cannot obviously produce contradictory case state.
+
+Do not redesign the schema.
+
+12. SECURITY / HYGIENE
+
+Verify:
+- .env ignored
+- uploads ignored
+- ADK SQLite runtime DB ignored
+- no secrets logged
+- user filenames are not used directly as filesystem paths
+- stored filenames remain sanitized/randomized
+
+13. DO NOT TOUCH
+
+Do not modify:
+- core Agent instructions
+- Gemini model
 - deployment architecture
 - authentication
-- unrelated UI
+- demo documents
+- overall design/theme
+- unrelated components
 
-12. CODE QUALITY
+14. VERIFICATION
 
-Keep the change focused.
+Run:
+- Python compile checks
+- frontend build
+- lint if already configured
+- git diff --check
 
-Prefer:
-- one session service configuration point
-- minimal changes to send_agent_message
-- reuse existing case/session linking behavior
-
-Do not over-engineer.
+Do not send Gemini requests.
 
 WHEN FINISHED
 
 Do not commit or push.
 
 Give me:
-1. exact persistent SessionService chosen
-2. why it is supported in our installed google-adk version
-3. files changed
-4. runtime data/database path
-5. how existing agent_session_id linkage works now
-6. how old in-memory-only session IDs are handled
-7. .gitignore changes
-8. limitations
-9. exact manual test steps for:
-   - create session
-   - restart backend
-   - reuse same session
-10. no Gemini requests should be sent during implementation
+1. files changed
+2. edge cases found
+3. edge cases fixed
+4. behavior changes
+5. any intentionally deferred issues
+6. exact manual QA checklist
+7. confirm no Gemini requests were sent

@@ -29,6 +29,10 @@ export function OverviewSection({
   const [finalReviewError, setFinalReviewError] = useState("");
 
   async function handleFinalReview() {
+    if (finalReviewLoading) {
+      return;
+    }
+
     setFinalReviewError("");
     setFinalReviewLoading(true);
 

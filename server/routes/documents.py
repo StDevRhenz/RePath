@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,6 +18,9 @@ router = APIRouter(
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+MAX_UPLOAD_SIZE_BYTES = int(
+    os.getenv("MAX_DOCUMENT_UPLOAD_SIZE_BYTES", str(10 * 1024 * 1024))
+)
 
 ALLOWED_CONTENT_TYPES = {
     "application/pdf",
@@ -39,10 +43,22 @@ async def upload_document(
             detail="Recovery case not found.",
         )
 
+    if case.get("status") == "ready_to_resubmit":
+        raise HTTPException(
+            status_code=400,
+            detail="Recovery case is already ready for resubmission.",
+        )
+
     if not _is_case_document_name(case, document_name):
         raise HTTPException(
             status_code=400,
             detail="This document is not part of the recovery case requirements.",
+        )
+
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file must include a filename.",
         )
 
     if file.content_type not in ALLOWED_CONTENT_TYPES:
@@ -57,6 +73,12 @@ async def upload_document(
         raise HTTPException(
             status_code=400,
             detail="Uploaded file is empty.",
+        )
+
+    if len(contents) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Uploaded file is too large.",
         )
 
     file_extension = Path(file.filename or "").suffix.lower()
@@ -122,6 +144,12 @@ def validate_documents(case_id: str):
             detail="Recovery case not found.",
         )
 
+    if case.get("status") == "ready_to_resubmit":
+        raise HTTPException(
+            status_code=400,
+            detail="Recovery case is already ready for resubmission.",
+        )
+
     documents = case.get("documents", [])
 
     if len(documents) == 0:
@@ -167,6 +195,12 @@ def delete_document(case_id: str, document_name: str):
         raise HTTPException(
             status_code=404,
             detail="Recovery case not found.",
+        )
+
+    if case.get("status") == "ready_to_resubmit":
+        raise HTTPException(
+            status_code=400,
+            detail="Recovery case is already ready for resubmission.",
         )
 
     try:

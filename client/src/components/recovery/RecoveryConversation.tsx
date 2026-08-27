@@ -113,6 +113,8 @@ export function RecoveryConversation({
         setError(
         "RePath is temporarily at its AI usage limit. Please try again shortly."
         );
+    } else if (error instanceof AgentApiError) {
+        setError(error.message);
     } else {
         setError(
         "RePath couldn't process your message. Please try again."

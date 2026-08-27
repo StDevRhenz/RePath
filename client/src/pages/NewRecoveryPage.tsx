@@ -22,6 +22,10 @@ export function NewRecoveryPage() {
 
 
   async function handleContinue() {
+    if (loading) {
+      return;
+    }
+
     const trimmedDescription = description.trim();
 
     if (!trimmedDescription) {

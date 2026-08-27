@@ -56,12 +56,16 @@ export function DocumentsSection({
       ),
     ]),
   ];
+  const hasActiveDocumentRequest =
+    validatingDocuments ||
+    Object.values(uploadingDocuments).some(Boolean) ||
+    Object.values(removingDocuments).some(Boolean);
 
   async function handleDocumentSelect(
     documentName: string,
     file: File | undefined
   ) {
-    if (!file) {
+    if (!file || hasActiveDocumentRequest) {
       return;
     }
 
@@ -110,6 +114,10 @@ export function DocumentsSection({
   }
 
   async function handleDocumentRemove(documentName: string) {
+    if (hasActiveDocumentRequest) {
+      return;
+    }
+
     setRequestError("");
 
     setRemovingDocuments((current) => ({
@@ -138,7 +146,7 @@ export function DocumentsSection({
   }
 
   async function handleValidateDocuments() {
-    if (documents.length === 0) {
+    if (documents.length === 0 || hasActiveDocumentRequest) {
       return;
     }
 
@@ -174,6 +182,10 @@ export function DocumentsSection({
               uploadingDocuments[documentName];
             const isRemoving =
               removingDocuments[documentName];
+            const isDocumentActionDisabled =
+              Boolean(isUploading) ||
+              Boolean(isRemoving) ||
+              validatingDocuments;
             const isValidating =
               validatingDocuments &&
               caseDocument?.status === "uploaded";
@@ -234,12 +246,18 @@ export function DocumentsSection({
                       {statusLabel}
                     </span>
 
-                    <label className="cursor-pointer">
+                    <label
+                      className={
+                        isDocumentActionDisabled
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer"
+                      }
+                    >
                       <input
                         type="file"
                         className="hidden"
                         accept=".pdf,.png,.jpg,.jpeg"
-                        disabled={Boolean(isUploading) || isRemoving}
+                        disabled={isDocumentActionDisabled}
                         onChange={(event) =>
                           handleDocumentSelect(
                             documentName,
@@ -259,8 +277,8 @@ export function DocumentsSection({
                         onClick={() =>
                           handleDocumentRemove(documentName)
                         }
-                        disabled={isRemoving}
-                        className="text-xs font-light text-zinc-400 transition-colors hover:text-zinc-700"
+                        disabled={isDocumentActionDisabled}
+                        className="text-xs font-light text-zinc-400 transition-colors hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isRemoving ? "Removing..." : "Remove"}
                       </button>
@@ -294,7 +312,7 @@ export function DocumentsSection({
         <div className="mt-6 flex justify-end">
           <Button
             onClick={handleValidateDocuments}
-            disabled={validatingDocuments}
+            disabled={hasActiveDocumentRequest}
             className="h-10 px-4 font-normal"
           >
             {validatingDocuments ? (
