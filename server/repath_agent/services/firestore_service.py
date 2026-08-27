@@ -29,6 +29,7 @@ def create_case(title: str) -> dict:
         "missing_documents": [],
         "recovery_steps": [],
         "documents": [],
+        "agent_session_id": None,
         "created_at": datetime.now(timezone.utc),
         "updated_at": datetime.now(timezone.utc),
     }
@@ -66,6 +67,18 @@ def update_case(case_id: str, updates: dict) -> dict | None:
     updated_document = case_ref.get()
 
     return updated_document.to_dict()
+
+
+def link_case_agent_session(
+    case_id: str,
+    agent_session_id: str,
+) -> dict | None:
+    return update_case(
+        case_id,
+        {
+            "agent_session_id": agent_session_id,
+        },
+    )
 
 
 def add_case_document(case_id: str, document: dict):

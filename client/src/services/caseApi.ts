@@ -23,6 +23,7 @@ export interface RecoveryCase {
   missing_documents: string[];
   recovery_steps: string[];
   documents: CaseDocument[];
+  agent_session_id?: string | null;
 }
 
 export interface FinalReviewResponse {

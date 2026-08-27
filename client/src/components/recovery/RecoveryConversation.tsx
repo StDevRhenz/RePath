@@ -18,27 +18,50 @@ type Message = {
 };
 
 type RecoveryConversationProps = {
-  initialUserMessage: string;
-  initialAgentMessage: string;
-  initialSessionId: string;
+  initialUserMessage?: string;
+  initialAgentMessage?: string;
+  initialSessionId?: string | null;
+  caseId?: string | null;
+  placeholder?: string;
+  helperText?: string;
+  onSessionUpdated?: () => Promise<void>;
 };
 
-export function RecoveryConversation({initialUserMessage, initialAgentMessage, initialSessionId,}: RecoveryConversationProps) {
+export function RecoveryConversation({
+  initialUserMessage,
+  initialAgentMessage,
+  initialSessionId,
+  caseId,
+  placeholder = "Reply to RePath...",
+  helperText = "RePath may ask for additional information before building your recovery plan.",
+  onSessionUpdated,
+}: RecoveryConversationProps) {
     const bottomRef = useRef<HTMLDivElement>(null);
-    const [sessionId] = useState(initialSessionId);
+    const [sessionId, setSessionId] = useState<string | null>(
+      initialSessionId ?? null
+    );
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: initialUserMessage,
-    },
-    {
-      id: crypto.randomUUID(),
-      role: "agent",
-      content: initialAgentMessage,
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const initialMessages: Message[] = [];
+
+    if (initialUserMessage) {
+      initialMessages.push({
+        id: crypto.randomUUID(),
+        role: "user",
+        content: initialUserMessage,
+      });
+    }
+
+    if (initialAgentMessage) {
+      initialMessages.push({
+        id: crypto.randomUUID(),
+        role: "agent",
+        content: initialAgentMessage,
+      });
+    }
+
+    return initialMessages;
+  });
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,8 +88,15 @@ export function RecoveryConversation({initialUserMessage, initialAgentMessage, i
     try {
       const result = await sendAgentMessage(
         message,
-        sessionId
+        sessionId,
+        caseId
       );
+
+      setSessionId(result.session_id);
+
+      if (!result.is_mock) {
+        await onSessionUpdated?.();
+      }
 
       const agentMessage: Message = {
         id: crypto.randomUUID(),
@@ -180,6 +210,19 @@ export function RecoveryConversation({initialUserMessage, initialAgentMessage, i
           </div>
         ))}
 
+        {messages.length === 0 && (
+          <div>
+            <p className="mb-2 text-xs font-normal uppercase tracking-[0.12em] text-zinc-400">
+              RePath
+            </p>
+
+            <p className="max-w-2xl text-sm font-light leading-7 text-zinc-600">
+              Ask me about this recovery case, the remaining steps, or
+              what ready to resubmit means.
+            </p>
+          </div>
+        )}
+
         {loading && (
         <div>
             <p className="mb-3 text-xs font-normal uppercase tracking-[0.12em] text-zinc-400">
@@ -231,7 +274,7 @@ export function RecoveryConversation({initialUserMessage, initialAgentMessage, i
                 handleSend();
                 }
             }}
-            placeholder="Reply to RePath..."
+            placeholder={placeholder}
             disabled={loading}
             className="min-h-24 resize-none bg-white pr-14 font-light leading-6"
             />
@@ -247,8 +290,7 @@ export function RecoveryConversation({initialUserMessage, initialAgentMessage, i
           </div>
 
           <p className="mt-2 text-xs font-light text-zinc-400">
-            RePath may ask for additional information before building your
-            recovery plan.
+            {helperText}
           </p>
         </div>
       </div>

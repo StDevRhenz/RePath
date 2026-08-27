@@ -1,224 +1,255 @@
 You are continuing work on my existing RePath project.
 
-Before changing anything, inspect the current repository and existing implementation.
+Before changing anything, inspect the repository and existing implementation.
 
 Do NOT rebuild working features.
-Do NOT modify Google ADK/Gemini.
-Do NOT consume AI quota.
-Do NOT refactor unrelated files.
+Do NOT modify document validation/final review unless necessary.
+Do NOT consume Gemini requests during implementation/testing.
 Do NOT commit or push automatically.
+Do NOT refactor unrelated files.
 
 CURRENT VERIFIED STATE
 
-The document recovery lifecycle is already working end-to-end.
+RePath already has:
 
-Current flow:
-
-Missing
-→ Uploading
-→ Uploaded
-→ Validate
-→ Ready / Needs Attention
-
-The backend already:
-- stores uploaded files under server/uploads/{case_id}/
-- stores document metadata in Firestore
-- validates documents deterministically
-- updates missing_documents
-- moves the case to ready_for_review when no missing documents remain
-- supports replace and remove
-- keeps frontend and Firestore synchronized
-
-The frontend workspace already has:
+Frontend:
+- Landing
+- New Recovery
+- Resume Case
+- Recovery Workspace
 - Overview
 - Documents
 - Recovery
-- Agent
+- Agent tab skeleton
 
-Current verified case state after all documents are valid:
+Backend:
+- FastAPI
+- Firestore
+- Google ADK
+- Gemini agent
+- persistent recovery cases
+- document upload
+- deterministic document validation
+- replace/remove document lifecycle
+- final review
+- ready_to_resubmit state
 
-status = "ready_for_review"
-missing_documents = []
+Current recovery lifecycle works:
 
-Overview currently shows:
-- Recovery progress: 75%
-- Current status: Ready For Review
-- No missing requirements
+Rejected / incomplete
+→ recovery case created
+→ missing documents identified
+→ documents uploaded
+→ validated
+→ ready_for_review
+→ final review
+→ ready_to_resubmit
+
+IMPORTANT EXISTING AGENT ARCHITECTURE
+
+There is already an agent API flow using:
+- Google ADK Runner
+- InMemorySessionService
+- send_agent_message(...)
+- POST /api/agent/message
+
+The frontend already has:
+- agentApi.ts
+- RecoveryConversation.tsx
+- NewRecoveryPage.tsx
+
+The agent API returns:
+
+{
+  "session_id": "...",
+  "response": "..."
+}
+
+Multi-turn messaging has already been tested successfully.
+
+IMPORTANT:
+session_id and case_id are DIFFERENT.
+
+case_id = persistent Firestore recovery case
+session_id = ADK conversation session
+
+CURRENT PROBLEM
+
+The Agent tab inside RecoveryWorkspace is intentionally disabled because a resumed Firestore case does not currently know which ADK session belongs to it.
 
 GOAL
 
-Implement the next deterministic recovery stage:
+Make the Agent tab aware of the recovery case and able to continue the appropriate agent conversation.
 
-ready_for_review
-→ final review
-→ ready_to_resubmit
-→ 100%
-
-This is NOT Gemini/AI validation yet.
-This is an application-state final verification step.
+However:
+- do NOT call Gemini automatically on page load
+- do NOT consume AI quota during development
+- preserve the current mock-agent capability
+- do not fake case/session relationships in the UI
 
 IMPLEMENT THE FOLLOWING:
 
-1. FINAL REVIEW BACKEND ENDPOINT
+1. FIRESTORE CASE SESSION FIELD
 
-Create an endpoint such as:
+Extend the recovery case model to support:
 
-POST /api/cases/{case_id}/final-review
+agent_session_id: string | null
 
-The endpoint must:
+New cases should initialize:
 
-- verify the recovery case exists
-- verify current case status is appropriate for final review
-- verify missing_documents is empty
-- verify there is at least one required/expected document if the case workflow requires documents
-- verify every uploaded recovery document is status == "valid"
-- reject the transition if any document is:
-  - uploaded
-  - validating
-  - needs_attention
-  - missing from disk if the existing validation architecture makes this necessary
-- do NOT trust the frontend to decide whether the case is complete
+agent_session_id = null
 
-If all checks pass:
+Existing cases without this field must remain backward compatible.
 
-update case status to:
+2. LINK SESSION TO CASE
 
-ready_to_resubmit
+Create a backend service function that can persist:
 
-and update updated_at.
+case_id → agent_session_id
 
-Return a clean response containing:
-- case_id
-- status
-- message
+Do not let arbitrary unknown case IDs create new cases.
 
-Example:
+3. AGENT MESSAGE API
+
+Extend the agent message flow so that it can optionally receive a case_id.
+
+Preferred request shape:
 
 {
-  "case_id": "...",
-  "status": "ready_to_resubmit",
-  "message": "Recovery case passed final review and is ready for resubmission."
+  "message": "...",
+  "session_id": "... or null",
+  "case_id": "... or null"
 }
 
-2. FIRESTORE SERVICE
+Behavior:
 
-Put the case state transition logic in an appropriate service function.
+A. If session_id is provided:
+- continue that session
 
-Avoid putting all Firestore logic directly inside the route.
+B. If no session_id is provided but case_id is provided:
+- load the recovery case
+- if case.agent_session_id exists, reuse it
+- otherwise create a new ADK session and persist it to that case
 
-Do not create a new status variant.
+C. If both are absent:
+- preserve the existing new-conversation behavior
 
-Use existing statuses only:
+D. If case_id does not exist:
+- return 404
 
-recovering
-waiting_for_documents
-ready_for_review
-ready_to_resubmit
+Do not silently overwrite an existing case's session with an unrelated session unless there is a clear intended reason.
 
-If older code contains waiting_for_user_documents, do not introduce more usage of it.
+4. NEW CASE CREATION FLOW
 
-3. ERROR CASES
+Inspect the existing agent/tool workflow.
 
-Return appropriate API errors for:
+When the agent creates a persistent recovery case during a conversation, associate the current ADK session with that case if reasonably possible within the existing architecture.
 
-- case does not exist → 404
-- case is not ready for final review → 400
-- missing_documents is not empty → 400
-- a required recovery document is not valid → 400
-- invalid current state → 400
-- persistence failure → 500
+Do not heavily redesign the agent tools if a smaller service-level solution works.
 
-Return useful messages without leaking stack traces.
+If automatic linkage during creation is difficult, document the limitation clearly and implement safe linkage when the case is first opened in the Agent tab.
 
-4. FRONTEND API SERVICE
+5. AGENT TAB FRONTEND
 
-Add an API function such as:
+Update AgentSection so it accepts the current RecoveryCase.
 
-finalizeRecoveryCase(caseId)
+Replace the disabled placeholder with a real case-aware conversation UI.
 
-Keep API calls in a service file, not directly inside the React component.
+It should:
+- display messages
+- allow user input
+- send through agentApi
+- pass recoveryCase.case_id
+- reuse recoveryCase.agent_session_id when available
+- show loading/thinking state
+- show friendly API errors
+- support Enter to send
+- Shift+Enter for newline
+- render markdown consistently with the existing RecoveryConversation component
 
-Use clear TypeScript response interfaces.
+Prefer reusing existing conversation/message rendering logic rather than duplicating large UI code.
 
-5. FRONTEND FINAL REVIEW ACTION
+6. MOCK MODE MUST STILL WORK
 
-Decide the cleanest existing workspace location for the action.
+There is currently:
 
-Preferred behavior:
+const USE_MOCK_AGENT = true
 
-When case.status === "ready_for_review":
+Do not remove this.
 
-show a clear action such as:
+When mock mode is enabled:
+- do not call FastAPI/Gemini
+- Agent tab should still be usable for frontend development
+- mock responses may be generic but must not pretend to have persisted a real ADK session unless explicitly represented as mock
 
-"Complete final review"
+When USE_MOCK_AGENT = false:
+- real case/session API flow should work
 
-or
+7. RECOVERY CASE TYPE
 
-"Review for resubmission"
+Update frontend RecoveryCase type:
 
-Do NOT redesign the page.
+agent_session_id?: string | null
 
-The action should:
-- call the backend final-review endpoint
-- show a loading state
-- disable while processing
-- show errors cleanly
-- refresh RecoveryCase after success
+Backward compatibility is important because older Firestore cases may not have this field.
 
-6. OVERVIEW STATE
+8. PERSISTENCE LIMITATION
 
-After successful final review, the existing Overview should naturally show:
+Current backend uses InMemorySessionService.
 
-Recovery progress: 100%
-Current status: Ready To Resubmit
+Therefore ADK sessions disappear when backend restarts.
 
-Use the existing progress mapping if already present.
+Do NOT solve full persistent ADK session storage in this task unless there is already a simple supported implementation in the codebase.
 
-Do not hardcode a fake local success state if refreshing the Firestore-backed RecoveryCase already handles this.
+Instead:
+- keep Firestore agent_session_id linkage
+- handle missing/expired in-memory session gracefully
+- document the limitation
 
-7. RECOVERY SECTION
+If an existing stored session_id no longer exists in InMemorySessionService:
+- create a fresh session safely
+- update Firestore agent_session_id
+- continue without crashing
 
-If appropriate and minimal, display that the recovery process is complete when status == ready_to_resubmit.
+9. ERROR HANDLING
 
-Do not redesign the whole section.
+Handle:
+- nonexistent case
+- expired/missing ADK session
+- agent API failure
+- Gemini 429 quota
+- invalid request
+- Firestore update failure
 
-8. IMPORTANT BUSINESS RULE
+Do not expose stack traces or secrets.
 
-ready_to_resubmit means:
+10. DO NOT TOUCH
 
-RePath has verified that the recovery case is complete based on the current deterministic validation rules.
-
-It does NOT mean:
-- RePath submitted the application
-- the external institution approved it
-- the application is guaranteed to succeed
-
-Keep wording accurate.
-
-9. DO NOT IMPLEMENT YET
-
-Do NOT add:
-- automatic external submission
-- browser automation
-- Google ADK calls
-- Gemini final review
+Do not modify:
+- document upload architecture
+- document validation behavior
+- final review logic
+- recovery progress logic
+- Gemini model selection
+- Google credentials
+- deployment
 - authentication
-- deployment changes
 - demo documents
-- AgentSection integration
-- unrelated UI polish
+- unrelated styling
 
-10. CODE QUALITY
+11. CODE QUALITY
 
-Keep changes small and consistent with the existing architecture.
-
+Keep changes small.
 Reuse:
-- get_case
-- update_case
-- existing Firestore patterns
-- existing RecoveryCase frontend refresh logic
+- agentApi.ts
+- RecoveryConversation patterns
+- existing Firestore service
+- existing RecoveryCase refresh logic
+- existing shadcn/Textarea/Button components
 
-Do not duplicate existing utilities unnecessarily.
+Avoid duplicating markdown renderer or message UI if it can be extracted/reused cleanly.
+
+Do not over-engineer.
 
 WHEN FINISHED
 
@@ -226,11 +257,12 @@ Do not commit or push.
 
 Give me:
 1. files changed
-2. exact backend behavior
-3. exact frontend behavior
-4. state transition rules
-5. limitations
-6. manual test steps
+2. backend session-linking behavior
+3. frontend Agent tab behavior
+4. how mock mode behaves
+5. how expired sessions are handled
+6. limitations
+7. exact manual test steps
 
 
 IMPORTANT: do NOT commit or push automatically ILL CHECK ALL FILES 

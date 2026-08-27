@@ -1,9 +1,11 @@
-from copy import error
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from repath_agent.services.agent_service import send_agent_message
+from repath_agent.services.agent_service import (
+    AgentCaseNotFoundError,
+    AgentSessionLinkError,
+    send_agent_message,
+)
 
 
 router = APIRouter(
@@ -15,6 +17,7 @@ router = APIRouter(
 class AgentMessageRequest(BaseModel):
     message: str
     session_id: str | None = None
+    case_id: str | None = None
 
 
 class AgentMessageResponse(BaseModel):
@@ -36,7 +39,20 @@ async def message_agent(body: AgentMessageRequest):
         return await send_agent_message(
             message=message,
             session_id=body.session_id,
+            case_id=body.case_id,
         )
+
+    except AgentCaseNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Recovery case not found.",
+        ) from error
+
+    except AgentSessionLinkError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to link this agent session to the recovery case.",
+        ) from error
 
     except Exception as error:
         print("Agent error:", error)

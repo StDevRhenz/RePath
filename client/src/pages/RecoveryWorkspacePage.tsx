@@ -183,7 +183,10 @@ export function RecoveryWorkspacePage() {
             )}
 
             {activeSection === "agent" && (
-              <AgentSection />
+              <AgentSection
+                recoveryCase={recoveryCase}
+                onCaseUpdated={refreshRecoveryCase}
+              />
             )}
           </motion.section>
         </div>
