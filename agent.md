@@ -6,7 +6,7 @@ Do NOT rebuild working features.
 Do NOT modify Gemini model configuration.
 Do NOT consume Gemini requests during implementation/testing.
 Do NOT commit or push automatically.
-Do NOT refactor unrelated files.
+Do NOT redesign the UI.
 Do NOT add demo/presentation content yet.
 
 CURRENT VERIFIED STATE
@@ -14,214 +14,267 @@ CURRENT VERIFIED STATE
 RePath already has:
 
 Frontend
+- React + TypeScript + Vite
 - Landing
 - New Recovery
 - Resume Case
 - Recovery Workspace
-- Overview
-- Documents
-- Recovery
+- Documents lifecycle
 - Agent tab
-- persistent visible Agent chat history
-- mock Agent mode
+- persistent visible chat history
+- mock mode
 
 Backend
 - FastAPI
 - Firestore
 - Google ADK
-- persistent recovery cases
+- persistent ADK sessions using DatabaseSessionService + SQLite
 - document upload
-- replace/remove lifecycle
-- deterministic document validation
+- deterministic validation
 - final review
-- ready_to_resubmit state
-- case_id ↔ agent_session_id linkage
-- persistent ADK session storage using DatabaseSessionService
-- Firestore-backed visible chat history
+- case-aware Agent responses
+- robust error handling
+- 10 MB upload limit
 
-Current goal:
+CURRENT GOAL
 
-Perform a targeted edge-case / robustness pass on existing functionality.
+Make the project production/deployment ready without changing core product behavior.
 
-Do NOT add major new features.
+IMPLEMENT A TARGETED PRODUCTION HARDENING PASS.
 
-TEST AND FIX THESE AREAS
+1. FRONTEND API CONFIG
 
-1. INVALID CASE IDs
+Remove hardcoded API URLs such as:
 
-Check all relevant endpoints and pages for:
-- missing case_id
-- malformed/nonexistent case_id
-- case removed from Firestore while page is open
+http://127.0.0.1:8000
 
-Expected:
-- clean 404 or friendly frontend error
-- no uncaught crash
+Use an environment-based frontend API URL:
 
-2. DOCUMENT UPLOAD EDGE CASES
+VITE_API_URL
 
-Check:
-- unsupported MIME type
-- empty file
-- missing filename
-- missing document_name
-- arbitrary document_name not part of the case
-- duplicate rapid upload requests
-- replace while a previous upload is still in progress
-- large files
+Create or update:
+client/.env.example
 
-Add a sensible backend file-size limit if none exists.
+Example:
 
-Recommended:
-- define a configurable max size
-- default around 10 MB for MVP
-- return HTTP 413 for oversized files
+VITE_API_URL=http://127.0.0.1:8000
 
-Do not consume Gemini.
+Use a clean shared API base configuration if multiple service files currently duplicate the URL.
 
-3. DOCUMENT VALIDATION EDGE CASES
+Do not expose secrets in frontend env.
 
-Check:
-- Firestore metadata exists but local physical file is missing
-- empty physical file
-- unsupported stored content type
-- validation called with no uploaded documents
-- validation called twice quickly
-- validation called after case is already ready_for_review or ready_to_resubmit
+2. BACKEND CONFIG
 
-Expected:
-- clean statuses/errors
-- no duplicate state corruption
+Centralize or cleanly load non-secret backend configuration where reasonable.
 
-4. DOCUMENT REMOVE / REPLACE
+Support environment values for:
 
-Check:
-- remove document that does not exist
-- remove while another request is active
-- replace a valid document
-- replacing should return it to uploaded/unvalidated state
-- old physical file should be removed
-- Firestore should contain only one logical document per document_name
+- Google Cloud project id
+- allowed CORS origins
+- max upload size
+- ADK session DB URL
+- upload directory if useful
 
-5. FINAL REVIEW EDGE CASES
+Existing defaults for local development should remain safe.
 
-Check:
-- final review while case is not ready_for_review
-- missing_documents not empty
-- one document not valid
-- stored file missing
-- final review called twice
-- final review after ready_to_resubmit
+Do not require production env just to run locally.
 
-Expected:
-- reject invalid transitions
-- no duplicate/incorrect state changes
-- useful error messages
+3. CORS
 
-6. AGENT API EDGE CASES
+Replace hardcoded-only development CORS setup with env-configurable origins.
 
-Do NOT send real Gemini requests.
+Suggested env:
 
-Review handling for:
-- no message
-- blank/whitespace-only message
-- unknown case_id
-- stale agent_session_id
-- persistent session DB unavailable
-- Firestore session-link failure
-- Gemini 429
-- generic backend agent failure
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
-Frontend should show useful errors and remain usable.
+Behavior:
+- parse comma-separated origins
+- trim whitespace
+- no wildcard when allow_credentials=True
+- local development should still work
 
-7. CHAT HISTORY EDGE CASES
+Do not enable overly permissive production CORS.
 
-Check:
-- no messages
-- only user message exists because Gemini failed
-- duplicate save attempts
-- message ordering
-- refresh while history is loading
-- unknown case
-- Firestore read failure
+4. HEALTH ENDPOINT
 
-Do not persist mock messages.
+Add:
 
-8. RAPID / DUPLICATE USER ACTIONS
+GET /health
 
-Inspect UI buttons for accidental double submission.
+Return a small response such as:
 
-Important actions:
-- Continue
-- Add/Replace document
-- Validate documents
-- Remove
-- Complete final review
-- Agent send
+{
+  "status": "ok",
+  "service": "repath-api"
+}
 
-Buttons should be disabled appropriately while request is active.
+Do not call Gemini or Firestore from the basic health endpoint unless there is a very strong reason.
 
-Avoid duplicate API writes.
+5. PRODUCTION STARTUP
 
-9. REFRESH DURING REQUEST
+Make sure the backend has a production-safe startup command documented.
 
-Review what happens if user refreshes while:
-- upload is running
-- validation is running
-- final review is running
-- Agent request is running
+Development:
 
-Do not add complicated recovery infrastructure.
+uvicorn main:app --reload
 
-Just make sure persisted backend state remains authoritative and page reload does not corrupt state.
+Production:
 
-10. FRONTEND ERROR STATES
+uvicorn main:app --host 0.0.0.0 --port <PORT>
 
-Make sure errors:
-- are readable
-- do not expose stack traces
-- do not leave buttons permanently disabled
-- can recover after retry where appropriate
+Support cloud-provided PORT environment variable if practical.
 
-11. FIRESTORE CONSISTENCY
+Do not use --reload in production.
 
-Review:
-- missing_documents
-- documents
-- status
-- agent_session_id
+If a Procfile/render.yaml/etc. already exists, inspect it before modifying.
 
-Make sure existing mutations cannot obviously produce contradictory case state.
+Do not introduce unnecessary deployment platforms.
 
-Do not redesign the schema.
+6. RUNTIME STORAGE REVIEW
 
-12. SECURITY / HYGIENE
+Current local runtime storage includes:
 
-Verify:
-- .env ignored
-- uploads ignored
-- ADK SQLite runtime DB ignored
-- no secrets logged
-- user filenames are not used directly as filesystem paths
-- stored filenames remain sanitized/randomized
+server/uploads/
+server/data/adk_sessions.db
 
-13. DO NOT TOUCH
+These are local filesystem storage.
 
-Do not modify:
-- core Agent instructions
+Do NOT migrate them to cloud storage in this task.
+
+Instead:
+- keep them configurable where reasonable
+- make sure directories are created safely
+- keep them ignored by Git
+- document that local disk may be ephemeral on cloud hosts
+
+Add comments/documentation indicating that production deployment may need persistent disk or cloud storage later.
+
+7. .GITIGNORE / SECRET HYGIENE
+
+Verify these remain ignored:
+
+.env
+server/.env
+server/.venv/
+server/uploads/
+server/data/
+client/node_modules/
+client/dist/
+
+Do not commit API keys, credentials, service account files, uploaded documents, or SQLite runtime data.
+
+8. ENV EXAMPLES
+
+Update/create env example files.
+
+Backend example should document non-secret config fields only.
+
+Example concepts:
+
+GOOGLE_CLOUD_PROJECT=repath-506704
+ALLOWED_ORIGINS=http://localhost:5173
+MAX_DOCUMENT_UPLOAD_SIZE_BYTES=10485760
+ADK_SESSION_DB_URL=sqlite+aiosqlite:///./data/adk_sessions.db
+
+Do not include real secrets.
+
+Frontend example:
+
+VITE_API_URL=http://127.0.0.1:8000
+
+9. API SERVICE CLEANUP
+
+If multiple frontend service files duplicate API URL constants, centralize them minimally.
+
+For example:
+src/lib/apiConfig.ts
+or another clean existing location.
+
+Do not over-refactor.
+
+10. BACKEND ERROR SAFETY
+
+Review production-facing responses.
+
+Ensure:
+- stack traces are not returned to frontend
+- internal exception details stay server-side
+- useful 400/404/413/429/500 responses remain
+
+Do not remove useful existing error messages.
+
+11. LOGGING
+
+Keep logging simple.
+
+Ensure:
+- no secrets
+- no file contents
+- no full private documents
+- no API keys
+
+Do not introduce a heavy logging framework unless already present.
+
+12. FIRESTORE / GOOGLE CONFIG
+
+Do not change database schema.
+
+Do not change authentication architecture.
+
+Use environment project configuration instead of unnecessary hardcoding if it can be done safely without breaking local development.
+
+13. FRONTEND BUILD
+
+Ensure production frontend build works with environment-based API URL.
+
+Do not change routing behavior.
+
+14. DOCUMENTATION
+
+Add a concise deployment/dev configuration note in an existing README or appropriate project markdown only if one exists and it can be done without rewriting the whole documentation.
+
+Document:
+
+Local frontend:
+npm run dev
+
+Local backend:
+uvicorn main:app --reload
+
+Production frontend:
+npm run build
+
+Production backend:
+uvicorn main:app --host 0.0.0.0 --port $PORT
+
+Required non-secret env configuration.
+
+Mention that:
+- uploads are local
+- SQLite ADK session storage is local
+- persistent cloud deployment may require persistent disk later
+
+15. DO NOT TOUCH
+
+Do NOT modify:
+- document validation logic
+- final review logic
+- recovery status logic
+- Agent instructions/tools
 - Gemini model
-- deployment architecture
+- chat persistence design
+- UI design/theme
 - authentication
 - demo documents
-- overall design/theme
-- unrelated components
+- presentation/video assets
 
-14. VERIFICATION
+16. VERIFICATION
 
 Run:
 - Python compile checks
+- backend startup/import check if possible
 - frontend build
-- lint if already configured
+- lint if configured
 - git diff --check
 
 Do not send Gemini requests.
@@ -232,9 +285,12 @@ Do not commit or push.
 
 Give me:
 1. files changed
-2. edge cases found
-3. edge cases fixed
-4. behavior changes
-5. any intentionally deferred issues
-6. exact manual QA checklist
-7. confirm no Gemini requests were sent
+2. frontend env/config behavior
+3. backend env/config behavior
+4. CORS behavior
+5. health endpoint
+6. production startup command
+7. runtime storage limitations
+8. security/gitignore checks
+9. exact manual QA steps
+10. confirm no Gemini requests were sent

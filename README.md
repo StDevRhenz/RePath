@@ -210,7 +210,51 @@ http://127.0.0.1:8000
 
 Secrets and API credentials must **not** be committed to the repository.
 
-An `.env.example` file will be provided containing the required variable names without their values.
+Use the example files as non-secret configuration references:
+
+* `client/.env.example`
+* `server/.env.example`
+
+Local frontend:
+
+```bash
+cd client
+npm run dev
+```
+
+Production frontend:
+
+```bash
+cd client
+npm run build
+```
+
+Local backend:
+
+```bash
+cd server
+uvicorn main:app --reload
+```
+
+Production backend:
+
+```bash
+cd server
+uvicorn main:app --host 0.0.0.0 --port $PORT
+```
+
+Important non-secret configuration:
+
+```text
+VITE_API_URL=http://127.0.0.1:8000
+GOOGLE_CLOUD_PROJECT=repath-506704
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+MAX_DOCUMENT_UPLOAD_SIZE_BYTES=10485760
+UPLOAD_DIR=uploads
+ADK_SESSION_DB_URL=sqlite+aiosqlite:///./data/adk_sessions.db
+```
+
+Runtime uploads and the local ADK SQLite session database currently live on local disk under `server/uploads/` and `server/data/`. Cloud deployment may need persistent disk or cloud storage later so uploaded documents and ADK session state survive host restarts.
 
 ---
 

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from config import ALLOWED_ORIGINS
 from routes.cases import router as cases_router
 from routes.agent import router as agent_router
 from routes.documents import router as documents_router
@@ -13,11 +14,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://192.168.100.6:5173",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,4 +34,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {
+        "status": "ok",
+        "service": "repath-api",
+    }

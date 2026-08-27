@@ -1,6 +1,5 @@
 import type { CaseDocument, CaseDocumentStatus } from "@/services/caseApi";
-
-const API_URL = "http://127.0.0.1:8000";
+import { API_URL } from "@/lib/apiConfig";
 
 export interface UploadDocumentResponse {
   case_id: string;

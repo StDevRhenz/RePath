@@ -1,12 +1,11 @@
-import os
 import uuid
-from pathlib import Path
 
 from dotenv import load_dotenv
 from google.adk.runners import Runner
 from google.adk.sessions import DatabaseSessionService
 from google.genai import types
 
+from config import ADK_SESSION_DB_URL, DEFAULT_ADK_SESSION_DB_PATH
 from repath_agent.agent import root_agent
 from repath_agent.services.firestore_service import (
     get_case,
@@ -18,23 +17,15 @@ load_dotenv()
 
 APP_NAME = "repath_agent"
 USER_ID = "repath_user"
-SERVER_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_SESSION_DB_PATH = SERVER_DIR / "data" / "adk_sessions.db"
-DEFAULT_SESSION_DB_URL = (
-    f"sqlite+aiosqlite:///{DEFAULT_SESSION_DB_PATH.as_posix()}"
-)
 
-DEFAULT_SESSION_DB_PATH.parent.mkdir(
+DEFAULT_ADK_SESSION_DB_PATH.parent.mkdir(
     parents=True,
     exist_ok=True,
 )
 
 try:
     session_service = DatabaseSessionService(
-        db_url=os.getenv(
-            "ADK_SESSION_DB_URL",
-            DEFAULT_SESSION_DB_URL,
-        ),
+        db_url=ADK_SESSION_DB_URL,
     )
 
     runner = Runner(

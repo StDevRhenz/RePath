@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
-import os
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from config import MAX_DOCUMENT_UPLOAD_SIZE_BYTES, UPLOAD_DIR
 from repath_agent.services.firestore_service import (
     get_case,
     remove_case_document,
@@ -16,10 +16,9 @@ router = APIRouter(
     tags=["documents"],
 )
 
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
-MAX_UPLOAD_SIZE_BYTES = int(
-    os.getenv("MAX_DOCUMENT_UPLOAD_SIZE_BYTES", str(10 * 1024 * 1024))
+UPLOAD_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
 )
 
 ALLOWED_CONTENT_TYPES = {
@@ -75,7 +74,7 @@ async def upload_document(
             detail="Uploaded file is empty.",
         )
 
-    if len(contents) > MAX_UPLOAD_SIZE_BYTES:
+    if len(contents) > MAX_DOCUMENT_UPLOAD_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
             detail="Uploaded file is too large.",

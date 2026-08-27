@@ -1,3 +1,5 @@
+import { API_URL } from "@/lib/apiConfig";
+
 export type CaseDocumentStatus =
   | "uploaded"
   | "validating"
@@ -31,8 +33,6 @@ export interface FinalReviewResponse {
   status: "ready_to_resubmit";
   message: string;
 }
-
-const API_URL = "http://127.0.0.1:8000";
 
 export async function getCase(caseId: string): Promise<RecoveryCase> {
   const response = await fetch(`${API_URL}/api/cases/${caseId}`);

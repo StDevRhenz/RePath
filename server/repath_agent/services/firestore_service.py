@@ -4,11 +4,12 @@ from uuid import uuid4
 
 from google.cloud import firestore
 
+from config import GOOGLE_CLOUD_PROJECT, UPLOAD_DIR
 
-db = firestore.Client(project="repath-506704")
+
+db = firestore.Client(project=GOOGLE_CLOUD_PROJECT)
 
 CASES_COLLECTION = "cases"
-UPLOAD_DIR = Path("uploads")
 
 
 class FinalReviewError(Exception):
