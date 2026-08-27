@@ -74,3 +74,177 @@ def add_case_document(case_id: str, document: dict):
     })
 
     return document
+
+
+def upsert_case_document(case_id: str, document: dict) -> dict | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    existing_case = case_ref.get()
+
+    if not existing_case.exists:
+        return None
+
+    case_data = existing_case.to_dict()
+    documents = case_data.get("documents", [])
+
+    updated_documents = [
+        current_document
+        for current_document in documents
+        if current_document.get("document_name") != document.get("document_name")
+    ]
+
+    updated_documents.append(document)
+
+    document_name = document.get("document_name")
+    updated_missing_documents = case_data.get("missing_documents", [])
+    known_document_names = {
+        *case_data.get("requirements", []),
+        *updated_missing_documents,
+        *[
+            current_document.get("document_name")
+            for current_document in documents
+        ],
+    }
+
+    if (
+        document_name
+        and document_name in known_document_names
+        and document_name not in updated_missing_documents
+    ):
+        updated_missing_documents = [
+            *updated_missing_documents,
+            document_name,
+        ]
+
+    updates = {
+        "documents": updated_documents,
+        "missing_documents": updated_missing_documents,
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    if case_data.get("status") == "ready_for_review":
+        updates["status"] = "waiting_for_documents"
+
+    case_ref.update(updates)
+
+    return document
+
+
+def remove_case_document(case_id: str, document_name: str) -> dict | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    existing_case = case_ref.get()
+
+    if not existing_case.exists:
+        return None
+
+    case_data = existing_case.to_dict()
+    documents = case_data.get("documents", [])
+
+    document_to_remove = next(
+        (
+            current_document
+            for current_document in documents
+            if current_document.get("document_name") == document_name
+        ),
+        None,
+    )
+
+    if document_to_remove is None:
+        return {}
+
+    updated_missing_documents = case_data.get("missing_documents", [])
+
+    if document_name not in updated_missing_documents:
+        updated_missing_documents = [
+            *updated_missing_documents,
+            document_name,
+        ]
+
+    case_ref.update({
+        "documents": [
+            current_document
+            for current_document in documents
+            if current_document.get("document_name") != document_name
+        ],
+        "missing_documents": updated_missing_documents,
+        "status": "waiting_for_documents",
+        "updated_at": datetime.now(timezone.utc),
+    })
+
+    return document_to_remove
+
+
+def update_case_documents_after_validation(
+    case_id: str,
+    validation_results: list[dict],
+) -> dict | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    existing_case = case_ref.get()
+
+    if not existing_case.exists:
+        return None
+
+    case_data = existing_case.to_dict()
+    documents = case_data.get("documents", [])
+    result_by_document_name = {
+        result["document_name"]: result
+        for result in validation_results
+    }
+
+    updated_documents = []
+
+    for document in documents:
+        document_name = document.get("document_name")
+        validation_result = result_by_document_name.get(document_name)
+
+        if validation_result is None:
+            updated_documents.append(document)
+            continue
+
+        updated_documents.append({
+            **document,
+            "status": validation_result["status"],
+            "validation_message": validation_result["validation_message"],
+            "validated_at": validation_result["validated_at"],
+        })
+
+    valid_document_names = {
+        result["document_name"]
+        for result in validation_results
+        if result["status"] == "valid"
+    }
+
+    updated_missing_documents = [
+        document_name
+        for document_name in case_data.get("missing_documents", [])
+        if document_name not in valid_document_names
+    ]
+
+    for result in validation_results:
+        document_name = result["document_name"]
+
+        if (
+            result["status"] == "needs_attention"
+            and document_name
+            and document_name not in updated_missing_documents
+        ):
+            updated_missing_documents.append(document_name)
+
+    updates = {
+        "documents": updated_documents,
+        "missing_documents": updated_missing_documents,
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    if len(updated_missing_documents) == 0:
+        updates["status"] = "ready_for_review"
+    elif case_data.get("status") == "ready_for_review":
+        updates["status"] = "waiting_for_documents"
+
+    case_ref.update(updates)
+
+    updated_case = case_ref.get()
+
+    return updated_case.to_dict()

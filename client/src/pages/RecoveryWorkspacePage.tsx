@@ -50,6 +50,15 @@ export function RecoveryWorkspacePage() {
       });
   }, [caseId]);
 
+  async function refreshRecoveryCase() {
+    if (!caseId) {
+      return;
+    }
+
+    const updatedCase = await getCase(caseId);
+    setRecoveryCase(updatedCase);
+  }
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#fafafa]">
@@ -162,6 +171,7 @@ export function RecoveryWorkspacePage() {
             {activeSection === "documents" && (
               <DocumentsSection
                 recoveryCase={recoveryCase}
+                onCaseUpdated={refreshRecoveryCase}
               />
             )}
 

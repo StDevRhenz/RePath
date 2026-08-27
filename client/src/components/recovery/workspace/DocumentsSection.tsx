@@ -2,17 +2,26 @@ import { useState } from "react";
 import { Check, FileText } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { RecoveryCase } from "@/services/caseApi";
+import type {
+  CaseDocument,
+  RecoveryCase,
+} from "@/services/caseApi";
 import { SectionHeading } from "@/components/recovery/workspace/SectionHeading";
-import { uploadCaseDocument } from "@/services/documentApi";
+import {
+  removeCaseDocument,
+  uploadCaseDocument,
+  validateCaseDocuments,
+} from "@/services/documentApi";
 
 
 type DocumentsSectionProps = {
   recoveryCase: RecoveryCase;
+  onCaseUpdated: () => Promise<void>;
 };
 
 export function DocumentsSection({
   recoveryCase,
+  onCaseUpdated,
 }: DocumentsSectionProps) {
   const [selectedDocuments, setSelectedDocuments] = useState<
     Record<string, File>
@@ -21,13 +30,32 @@ export function DocumentsSection({
   const [validatingDocuments, setValidatingDocuments] =
     useState(false);
 
-  const [validatedDocuments, setValidatedDocuments] = useState<
-    Record<string, boolean>
-  >({});
-
   const [uploadingDocuments, setUploadingDocuments] = useState<
     Record<string, boolean>
   >({});
+
+  const [removingDocuments, setRemovingDocuments] = useState<
+    Record<string, boolean>
+  >({});
+
+  const [requestError, setRequestError] = useState("");
+  const documents = recoveryCase.documents ?? [];
+
+  const documentsByName = new Map(
+    documents.map((document) => [
+      document.document_name,
+      document,
+    ])
+  );
+
+  const documentNames = [
+    ...new Set([
+      ...recoveryCase.missing_documents,
+      ...documents.map(
+        (document) => document.document_name
+      ),
+    ]),
+  ];
 
   async function handleDocumentSelect(
     documentName: string,
@@ -42,10 +70,7 @@ export function DocumentsSection({
       [documentName]: file,
     }));
 
-    setValidatedDocuments((current) => ({
-      ...current,
-      [documentName]: false,
-    }));
+    setRequestError("");
 
     setUploadingDocuments((current) => ({
       ...current,
@@ -60,8 +85,16 @@ export function DocumentsSection({
       );
 
       console.log("Uploaded document:", result);
+      await onCaseUpdated();
+
+      setSelectedDocuments((current) => {
+        const updated = { ...current };
+        delete updated[documentName];
+        return updated;
+      });
     } catch (error) {
       console.error(error);
+      setRequestError(getRequestErrorMessage(error));
 
       setSelectedDocuments((current) => {
         const updated = { ...current };
@@ -76,46 +109,51 @@ export function DocumentsSection({
     }
   }
 
-  function handleDocumentRemove(documentName: string) {
-    setSelectedDocuments((current) => {
-      const updated = { ...current };
-      delete updated[documentName];
+  async function handleDocumentRemove(documentName: string) {
+    setRequestError("");
 
-      return updated;
-    });
+    setRemovingDocuments((current) => ({
+      ...current,
+      [documentName]: true,
+    }));
 
-    setValidatedDocuments((current) => {
-      const updated = { ...current };
-      delete updated[documentName];
+    try {
+      await removeCaseDocument(recoveryCase.case_id, documentName);
+      await onCaseUpdated();
 
-      return updated;
-    });
+      setSelectedDocuments((current) => {
+        const updated = { ...current };
+        delete updated[documentName];
+        return updated;
+      });
+    } catch (error) {
+      console.error(error);
+      setRequestError(getRequestErrorMessage(error));
+    } finally {
+      setRemovingDocuments((current) => ({
+        ...current,
+        [documentName]: false,
+      }));
+    }
   }
 
   async function handleValidateDocuments() {
-    const documentNames = Object.keys(selectedDocuments);
-
-    if (documentNames.length === 0) {
+    if (documents.length === 0) {
       return;
     }
 
+    setRequestError("");
     setValidatingDocuments(true);
 
-    // Mock validation for frontend development.
-    await new Promise((resolve) => setTimeout(resolve, 1800));
-
-    const results: Record<string, boolean> = {};
-
-    documentNames.forEach((documentName) => {
-      results[documentName] = true;
-    });
-
-    setValidatedDocuments((current) => ({
-      ...current,
-      ...results,
-    }));
-
-    setValidatingDocuments(false);
+    try {
+      await validateCaseDocuments(recoveryCase.case_id);
+      await onCaseUpdated();
+    } catch (error) {
+      console.error(error);
+      setRequestError(getRequestErrorMessage(error));
+    } finally {
+      setValidatingDocuments(false);
+    }
   }
 
   return (
@@ -126,14 +164,35 @@ export function DocumentsSection({
       />
 
       <div className="mt-8 divide-y divide-zinc-200 border-y border-zinc-200">
-        {recoveryCase.missing_documents.length > 0 ? (
-          recoveryCase.missing_documents.map((document) => {
-            const selectedFile = selectedDocuments[document];
-            const isValidated = validatedDocuments[document];
-            const isUploading = uploadingDocuments[document];
+        {documentNames.length > 0 ? (
+          documentNames.map((documentName) => {
+            const caseDocument =
+              documentsByName.get(documentName);
+            const selectedFile =
+              selectedDocuments[documentName];
+            const isUploading =
+              uploadingDocuments[documentName];
+            const isRemoving =
+              removingDocuments[documentName];
+            const isValidating =
+              validatingDocuments &&
+              caseDocument?.status === "uploaded";
+            const displayFileName =
+              selectedFile?.name ??
+              caseDocument?.original_file_name;
+            const statusLabel = getStatusLabel(
+              caseDocument,
+              Boolean(isUploading),
+              Boolean(isValidating)
+            );
+            const statusClassName = getStatusClassName(
+              caseDocument,
+              Boolean(isUploading),
+              Boolean(isValidating)
+            );
             
             return (
-              <div key={document} className="py-5">
+              <div key={documentName} className="py-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-center gap-4">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
@@ -145,12 +204,12 @@ export function DocumentsSection({
 
                     <div className="min-w-0">
                       <p className="text-sm font-normal text-zinc-900">
-                        {document}
+                        {documentName}
                       </p>
 
-                      {selectedFile ? (
+                      {displayFileName ? (
                         <p className="mt-1 truncate text-sm font-light text-zinc-500">
-                          {selectedFile.name}
+                          {displayFileName}
                         </p>
                       ) : (
                         <p className="mt-1 text-sm font-light text-zinc-500">
@@ -158,26 +217,21 @@ export function DocumentsSection({
                           recovery.
                         </p>
                       )}
+
+                      {caseDocument?.status === "needs_attention" &&
+                        caseDocument.validation_message && (
+                          <p className="mt-2 text-sm font-light text-amber-700">
+                            {caseDocument.validation_message}
+                          </p>
+                        )}
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 sm:justify-end">
                     <span
-                      className={`rounded-full border px-2.5 py-1 text-xs font-light ${
-                        isValidated
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : selectedFile
-                            ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                            : "border-zinc-200 bg-white text-zinc-500"
-                      }`}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-light ${statusClassName}`}
                     >
-                      {isValidated
-                        ? "Ready"
-                        : isUploading
-                          ? "Uploading..."
-                          : selectedFile
-                            ? "Uploaded"
-                            : "Missing"}
+                      {statusLabel}
                     </span>
 
                     <label className="cursor-pointer">
@@ -185,28 +239,30 @@ export function DocumentsSection({
                         type="file"
                         className="hidden"
                         accept=".pdf,.png,.jpg,.jpeg"
+                        disabled={Boolean(isUploading) || isRemoving}
                         onChange={(event) =>
                           handleDocumentSelect(
-                            document,
+                            documentName,
                             event.target.files?.[0]
                           )
                         }
                       />
 
                       <span className="inline-flex h-9 items-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-normal text-zinc-700 transition-colors hover:bg-zinc-50">
-                        {selectedFile ? "Replace" : "Add document"}
+                        {caseDocument ? "Replace" : "Add document"}
                       </span>
                     </label>
 
-                    {selectedFile && (
+                    {caseDocument && (
                       <button
                         type="button"
                         onClick={() =>
-                          handleDocumentRemove(document)
+                          handleDocumentRemove(documentName)
                         }
+                        disabled={isRemoving}
                         className="text-xs font-light text-zinc-400 transition-colors hover:text-zinc-700"
                       >
-                        Remove
+                        {isRemoving ? "Removing..." : "Remove"}
                       </button>
                     )}
                   </div>
@@ -228,7 +284,13 @@ export function DocumentsSection({
         )}
       </div>
 
-      {Object.keys(selectedDocuments).length > 0 && (
+      {requestError && (
+        <p className="mt-4 text-sm font-light text-red-600">
+          {requestError}
+        </p>
+      )}
+
+      {documents.length > 0 && (
         <div className="mt-6 flex justify-end">
           <Button
             onClick={handleValidateDocuments}
@@ -258,4 +320,63 @@ export function DocumentsSection({
       )}
     </div>
   );
+}
+
+function getStatusLabel(
+  document: CaseDocument | undefined,
+  isUploading: boolean,
+  isValidating: boolean
+) {
+  if (isUploading) {
+    return "Uploading...";
+  }
+
+  if (isValidating) {
+    return "Validating...";
+  }
+
+  switch (document?.status) {
+    case "valid":
+      return "Ready";
+
+    case "needs_attention":
+      return "Needs Attention";
+
+    case "validating":
+      return "Validating...";
+
+    case "uploaded":
+      return "Uploaded";
+
+    default:
+      return "Missing";
+  }
+}
+
+function getStatusClassName(
+  document: CaseDocument | undefined,
+  isUploading: boolean,
+  isValidating: boolean
+) {
+  if (isUploading || isValidating || document?.status === "uploaded") {
+    return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  }
+
+  if (document?.status === "valid") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (document?.status === "needs_attention") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-zinc-200 bg-white text-zinc-500";
+}
+
+function getRequestErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Document request failed.";
 }
