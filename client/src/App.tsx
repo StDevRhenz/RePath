@@ -6,6 +6,7 @@ import { ResumeCasePage } from "@/pages/ResumeCasePage";
 import { RecoveryWorkspacePage } from "@/pages/RecoveryWorkspacePage";
 import { RecoveriesPage } from "@/pages/RecoveriesPage";
 import { useAuth } from "@/context/AuthContext";
+import { StrhenzCreditLink } from "@/components/navigation/StrhenzCreditLink";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/resume" element={<ResumeCasePage />} />
         <Route path="/cases/:caseId" element={<RecoveryWorkspacePage />} />
       </Routes>
+      <StrhenzCreditLink />
     </BrowserRouter>
   );
 }

@@ -4,6 +4,7 @@ import firebase_admin
 
 from config import ALLOWED_ORIGINS
 from auth import get_current_user
+from routes.account import router as account_router
 from routes.cases import router as cases_router
 from routes.agent import router as agent_router
 from routes.documents import router as documents_router
@@ -30,6 +31,7 @@ app.add_middleware(
 app.include_router(cases_router)
 app.include_router(agent_router)
 app.include_router(documents_router)
+app.include_router(account_router)
 
 
 @app.get("/")

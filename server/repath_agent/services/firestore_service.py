@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
+import shutil
 from uuid import uuid4
 
 from google.cloud import firestore
@@ -116,6 +117,42 @@ def get_cases_by_owner(owner_id: str) -> list[dict]:
         document.to_dict()
         for document in documents
     ]
+
+
+def delete_cases_by_owner(owner_id: str) -> dict:
+    deleted_cases = 0
+    deleted_messages = 0
+    deleted_upload_directories = 0
+    missing_upload_directories = 0
+
+    documents = (
+        db.collection(CASES_COLLECTION)
+        .where("owner_id", "==", owner_id)
+        .stream()
+    )
+
+    for document in documents:
+        case_data = document.to_dict()
+        case_id = case_data.get("case_id") or document.id
+        messages_deleted_for_case = _delete_case_messages(document.reference)
+
+        document.reference.delete()
+        deleted_cases += 1
+        deleted_messages += messages_deleted_for_case
+
+        upload_deleted = _delete_case_upload_directory(case_id)
+
+        if upload_deleted:
+            deleted_upload_directories += 1
+        else:
+            missing_upload_directories += 1
+
+    return {
+        "deleted_cases": deleted_cases,
+        "deleted_messages": deleted_messages,
+        "deleted_upload_directories": deleted_upload_directories,
+        "missing_upload_directories": missing_upload_directories,
+    }
 
 
 def case_belongs_to_owner(
@@ -239,6 +276,47 @@ def _serialize_datetime(value):
         return value.isoformat()
 
     return value
+
+
+def _delete_case_messages(case_ref) -> int:
+    deleted_messages = 0
+
+    while True:
+        messages = list(
+            case_ref
+            .collection("messages")
+            .limit(450)
+            .stream()
+        )
+
+        if len(messages) == 0:
+            return deleted_messages
+
+        batch = db.batch()
+
+        for message in messages:
+            batch.delete(message.reference)
+
+        batch.commit()
+        deleted_messages += len(messages)
+
+
+def _delete_case_upload_directory(case_id: str) -> bool:
+    upload_root = UPLOAD_DIR.resolve()
+    case_upload_dir = (UPLOAD_DIR / Path(case_id).name).resolve()
+
+    if upload_root == case_upload_dir or upload_root not in case_upload_dir.parents:
+        raise ValueError("Resolved upload path is outside the upload directory.")
+
+    if not case_upload_dir.exists():
+        return False
+
+    if case_upload_dir.is_file() or case_upload_dir.is_symlink():
+        case_upload_dir.unlink()
+        return True
+
+    shutil.rmtree(case_upload_dir)
+    return True
 
 
 def add_case_document(case_id: str, document: dict):
