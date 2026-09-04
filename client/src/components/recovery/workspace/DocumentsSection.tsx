@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Check, FileText } from "lucide-react";
+import { useState, type DragEvent } from "react";
+import { Check, Download, Eye, FileText, UploadCloud } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type {
@@ -9,6 +9,8 @@ import type {
 import { SectionHeading } from "@/components/recovery/workspace/SectionHeading";
 import {
   removeCaseDocument,
+  getCaseDocumentFile,
+  MAX_DOCUMENT_SIZE_BYTES,
   uploadCaseDocument,
   validateCaseDocuments,
 } from "@/services/documentApi";
@@ -33,6 +35,9 @@ export function DocumentsSection({
   const [uploadingDocuments, setUploadingDocuments] = useState<
     Record<string, boolean>
   >({});
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [draggingDocument, setDraggingDocument] = useState<string | null>(null);
+  const [openingDocuments, setOpeningDocuments] = useState<Record<string, boolean>>({});
 
   const [removingDocuments, setRemovingDocuments] = useState<
     Record<string, boolean>
@@ -77,6 +82,18 @@ export function DocumentsSection({
       return;
     }
 
+    const validationError = validateFile(file);
+    if (validationError) {
+      setRequestError(`${documentName}: ${validationError}`);
+      return;
+    }
+
+    if (documentsByName.has(documentName) && !window.confirm(
+      `Replace the current file for "${documentName}"?`
+    )) {
+      return;
+    }
+
     setSelectedDocuments((current) => ({
       ...current,
       [documentName]: file,
@@ -88,18 +105,25 @@ export function DocumentsSection({
       ...current,
       [documentName]: true,
     }));
+    setUploadProgress((current) => ({ ...current, [documentName]: 0 }));
 
     try {
       const result = await uploadCaseDocument(
         recoveryCase.case_id,
         documentName,
-        file
+        file,
+        (progress) => setUploadProgress((current) => ({ ...current, [documentName]: progress }))
       );
 
       console.log("Uploaded document:", result);
       await onCaseUpdated();
 
       setSelectedDocuments((current) => {
+        const updated = { ...current };
+        delete updated[documentName];
+        return updated;
+      });
+      setUploadProgress((current) => {
         const updated = { ...current };
         delete updated[documentName];
         return updated;
@@ -118,6 +142,57 @@ export function DocumentsSection({
         ...current,
         [documentName]: false,
       }));
+    }
+  }
+
+  function handleDrop(documentName: string, event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDraggingDocument(null);
+    void handleDocumentSelect(documentName, event.dataTransfer.files[0]);
+  }
+
+  function previewFile(file: File) {
+    const url = URL.createObjectURL(file);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  function downloadFile(file: File) {
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  async function handleExistingFileAction(documentName: string, action: "preview" | "download") {
+    const previewWindow = action === "preview" ? window.open("about:blank", "_blank") : null;
+    if (action === "preview" && !previewWindow) {
+      setRequestError("Your browser blocked the preview window. Please allow pop-ups for RePath and try again.");
+      return;
+    }
+
+    setOpeningDocuments((current) => ({ ...current, [documentName]: true }));
+    setRequestError("");
+    try {
+      const blob = await getCaseDocumentFile(recoveryCase.case_id, documentName);
+      const url = URL.createObjectURL(blob);
+      if (action === "preview") {
+        previewWindow!.opener = null;
+        previewWindow!.location.href = url;
+      } else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = documentsByName.get(documentName)?.original_file_name || documentName;
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      previewWindow?.close();
+      setRequestError(getRequestErrorMessage(error));
+    } finally {
+      setOpeningDocuments((current) => ({ ...current, [documentName]: false }));
     }
   }
 
@@ -218,9 +293,20 @@ export function DocumentsSection({
               caseDocument,
               Boolean(isUploading)
             );
+            const progress = uploadProgress[documentName] ?? 0;
+            const isOpening = openingDocuments[documentName];
             
             return (
-              <div key={documentName} className={rowClassName}>
+              <div
+                key={documentName}
+                className={`${rowClassName} transition-colors ${draggingDocument === documentName ? "bg-indigo-50" : ""}`}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  if (!isDocumentActionDisabled) setDraggingDocument(documentName);
+                }}
+                onDragLeave={() => setDraggingDocument((current) => current === documentName ? null : current)}
+                onDrop={(event) => handleDrop(documentName, event)}
+              >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-center gap-4">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
@@ -252,6 +338,17 @@ export function DocumentsSection({
                             {caseDocument.validation_message}
                           </p>
                         )}
+
+                      {isUploading && (
+                        <div className="mt-3 max-w-sm" aria-live="polite">
+                          <div className="flex justify-between text-xs text-zinc-500">
+                            <span>Uploading file...</span><span>{progress}%</span>
+                          </div>
+                          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-200">
+                            <div className="h-full rounded-full bg-indigo-500 transition-[width]" style={{ width: `${progress}%` }} />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -276,18 +373,38 @@ export function DocumentsSection({
                         className="sr-only"
                         accept=".pdf,.png,.jpg,.jpeg"
                         disabled={isDocumentActionDisabled}
-                        onChange={(event) =>
-                          handleDocumentSelect(
-                            documentName,
-                            event.target.files?.[0]
-                          )
-                        }
+                        onChange={(event) => {
+                          void handleDocumentSelect(documentName, event.target.files?.[0]);
+                          event.currentTarget.value = "";
+                        }}
                       />
 
                       <span className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-normal text-zinc-700 transition-colors hover:bg-zinc-50 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2">
-                        {actionLabel}
+                        <UploadCloud className="mr-2 size-4" />{actionLabel}
                       </span>
                     </label>
+
+                    {selectedFile && (
+                      <>
+                        <button type="button" aria-label={`Preview ${selectedFile.name}`} onClick={() => previewFile(selectedFile)} className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900">
+                          <Eye className="size-3.5" /> Preview
+                        </button>
+                        <button type="button" aria-label={`Download ${selectedFile.name}`} onClick={() => downloadFile(selectedFile)} className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900">
+                          <Download className="size-3.5" /> Download
+                        </button>
+                      </>
+                    )}
+
+                    {caseDocument && !selectedFile && (
+                      <>
+                        <button type="button" aria-label={`Preview ${displayFileName || documentName}`} disabled={isOpening} onClick={() => void handleExistingFileAction(documentName, "preview")} className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 disabled:opacity-50">
+                          <Eye className="size-3.5" /> {isOpening ? "Opening..." : "Preview"}
+                        </button>
+                        <button type="button" aria-label={`Download ${displayFileName || documentName}`} disabled={isOpening} onClick={() => void handleExistingFileAction(documentName, "download")} className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 disabled:opacity-50">
+                          <Download className="size-3.5" /> Download
+                        </button>
+                      </>
+                    )}
 
                     {caseDocument && (
                       <button
@@ -321,10 +438,14 @@ export function DocumentsSection({
       </div>
 
       {requestError && (
-        <p className="mt-4 text-sm font-light text-red-600">
+        <p role="alert" className="mt-4 text-sm font-light text-red-600">
           {requestError}
         </p>
       )}
+
+      <p className="mt-4 flex items-center gap-2 text-xs font-light text-zinc-400">
+        <UploadCloud className="size-3.5" /> Drop a PDF, PNG, or JPG on a document row to upload it. Maximum size: {formatFileSize(MAX_DOCUMENT_SIZE_BYTES)}.
+      </p>
 
       {documents.length > 0 && (
         <div className="mt-6 flex justify-end">
@@ -452,4 +573,23 @@ function getRequestErrorMessage(error: unknown) {
   }
 
   return "We couldn't update this document. Please try again.";
+}
+
+function validateFile(file: File) {
+  const allowedTypes = ["application/pdf", "image/png", "image/jpeg"];
+  const allowedExtensions = [".pdf", ".png", ".jpg", ".jpeg"];
+  const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+
+  if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(extension)) {
+    return "Use a PDF, PNG, or JPG file.";
+  }
+  if (file.size === 0) return "The selected file is empty.";
+  if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
+    return `The file is too large. Maximum size is ${formatFileSize(MAX_DOCUMENT_SIZE_BYTES)}.`;
+  }
+  return "";
+}
+
+function formatFileSize(bytes: number) {
+  return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
