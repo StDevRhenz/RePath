@@ -1,0 +1,591 @@
+from contextlib import contextmanager
+from contextvars import ContextVar
+from datetime import datetime, timezone
+from pathlib import Path
+import shutil
+from uuid import uuid4
+
+from google.cloud import firestore
+
+from config import GOOGLE_CLOUD_PROJECT, UPLOAD_DIR
+
+
+db = firestore.Client(project=GOOGLE_CLOUD_PROJECT)
+
+CASES_COLLECTION = "cases"
+
+current_owner_id: ContextVar[str | None] = ContextVar(
+    "current_owner_id",
+    default=None,
+)
+current_owner_email: ContextVar[str | None] = ContextVar(
+    "current_owner_email",
+    default=None,
+)
+
+
+@contextmanager
+def case_owner_context(
+    owner_id: str,
+    owner_email: str | None = None,
+):
+    owner_id_token = current_owner_id.set(owner_id)
+    owner_email_token = current_owner_email.set(owner_email)
+
+    try:
+        yield
+    finally:
+        current_owner_id.reset(owner_id_token)
+        current_owner_email.reset(owner_email_token)
+
+
+class FinalReviewError(Exception):
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
+def create_case(
+    title: str,
+    owner_id: str | None = None,
+    owner_email: str | None = None,
+) -> dict:
+    case_id = str(uuid4())
+    resolved_owner_id = owner_id or current_owner_id.get()
+    resolved_owner_email = owner_email or current_owner_email.get()
+
+    case_data = {
+        "case_id": case_id,
+        "title": title,
+        "status": "recovering",
+        "requirements": [],
+        "submitted_documents": [],
+        "missing_documents": [],
+        "recovery_steps": [],
+        "documents": [],
+        "agent_session_id": None,
+        "owner_id": resolved_owner_id,
+        "owner_email": resolved_owner_email,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    db.collection(CASES_COLLECTION).document(case_id).set(case_data)
+
+    return case_data
+
+
+def get_case(case_id: str) -> dict | None:
+    document = (
+        db.collection(CASES_COLLECTION)
+        .document(case_id)
+        .get()
+    )
+
+    if not document.exists:
+        return None
+
+    case = document.to_dict()
+    owner_id = current_owner_id.get()
+
+    if owner_id and case.get("owner_id") != owner_id:
+        return None
+
+    return case
+
+
+def get_case_for_owner(
+    case_id: str,
+    owner_id: str,
+) -> dict | None:
+    case = get_case(case_id)
+
+    if case is None or case.get("owner_id") != owner_id:
+        return None
+
+    return case
+
+
+def get_cases_by_owner(owner_id: str) -> list[dict]:
+    documents = (
+        db.collection(CASES_COLLECTION)
+        .where("owner_id", "==", owner_id)
+        .stream()
+    )
+
+    return [
+        document.to_dict()
+        for document in documents
+    ]
+
+
+def delete_cases_by_owner(owner_id: str) -> dict:
+    deleted_cases = 0
+    deleted_messages = 0
+    deleted_upload_directories = 0
+    missing_upload_directories = 0
+
+    documents = (
+        db.collection(CASES_COLLECTION)
+        .where("owner_id", "==", owner_id)
+        .stream()
+    )
+
+    for document in documents:
+        case_data = document.to_dict()
+        case_id = case_data.get("case_id") or document.id
+        messages_deleted_for_case = _delete_case_messages(document.reference)
+
+        document.reference.delete()
+        deleted_cases += 1
+        deleted_messages += messages_deleted_for_case
+
+        upload_deleted = _delete_case_upload_directory(case_id)
+
+        if upload_deleted:
+            deleted_upload_directories += 1
+        else:
+            missing_upload_directories += 1
+
+    return {
+        "deleted_cases": deleted_cases,
+        "deleted_messages": deleted_messages,
+        "deleted_upload_directories": deleted_upload_directories,
+        "missing_upload_directories": missing_upload_directories,
+    }
+
+
+def case_belongs_to_owner(
+    case_id: str,
+    owner_id: str,
+) -> bool:
+    return get_case_for_owner(case_id, owner_id) is not None
+
+
+def update_case(case_id: str, updates: dict) -> dict | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    document = case_ref.get()
+
+    if not document.exists:
+        return None
+
+    owner_id = current_owner_id.get()
+
+    if owner_id and document.to_dict().get("owner_id") != owner_id:
+        return None
+
+    updates["updated_at"] = datetime.now(timezone.utc)
+
+    case_ref.update(updates)
+
+    updated_document = case_ref.get()
+
+    return updated_document.to_dict()
+
+
+def link_case_agent_session(
+    case_id: str,
+    agent_session_id: str,
+) -> dict | None:
+    return update_case(
+        case_id,
+        {
+            "agent_session_id": agent_session_id,
+        },
+    )
+
+
+def save_case_message(
+    case_id: str,
+    role: str,
+    content: str,
+    session_id: str | None = None,
+) -> dict | None:
+    if role not in {"user", "agent"}:
+        raise ValueError("Invalid message role.")
+
+    if not content.strip():
+        raise ValueError("Message content cannot be empty.")
+
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+    case_document = case_ref.get()
+
+    if not case_document.exists:
+        return None
+
+    message_id = str(uuid4())
+    created_at = datetime.now(timezone.utc)
+
+    message = {
+        "message_id": message_id,
+        "role": role,
+        "content": content,
+        "created_at": created_at,
+    }
+
+    if session_id:
+        message["session_id"] = session_id
+
+    (
+        case_ref
+        .collection("messages")
+        .document(message_id)
+        .set(message)
+    )
+
+    return _serialize_case_message(message)
+
+
+def get_case_messages(case_id: str) -> list[dict] | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+    case_document = case_ref.get()
+
+    if not case_document.exists:
+        return None
+
+    messages = (
+        case_ref
+        .collection("messages")
+        .order_by("created_at")
+        .stream()
+    )
+
+    return [
+        _serialize_case_message(message.to_dict())
+        for message in messages
+    ]
+
+
+def _serialize_case_message(message: dict) -> dict:
+    serialized_message = {
+        "message_id": message.get("message_id"),
+        "role": message.get("role"),
+        "content": message.get("content"),
+        "created_at": _serialize_datetime(message.get("created_at")),
+    }
+
+    if message.get("session_id"):
+        serialized_message["session_id"] = message.get("session_id")
+
+    return serialized_message
+
+
+def _serialize_datetime(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    return value
+
+
+def _delete_case_messages(case_ref) -> int:
+    deleted_messages = 0
+
+    while True:
+        messages = list(
+            case_ref
+            .collection("messages")
+            .limit(450)
+            .stream()
+        )
+
+        if len(messages) == 0:
+            return deleted_messages
+
+        batch = db.batch()
+
+        for message in messages:
+            batch.delete(message.reference)
+
+        batch.commit()
+        deleted_messages += len(messages)
+
+
+def _delete_case_upload_directory(case_id: str) -> bool:
+    upload_root = UPLOAD_DIR.resolve()
+    case_upload_dir = (UPLOAD_DIR / Path(case_id).name).resolve()
+
+    if upload_root == case_upload_dir or upload_root not in case_upload_dir.parents:
+        raise ValueError("Resolved upload path is outside the upload directory.")
+
+    if not case_upload_dir.exists():
+        return False
+
+    if case_upload_dir.is_file() or case_upload_dir.is_symlink():
+        case_upload_dir.unlink()
+        return True
+
+    shutil.rmtree(case_upload_dir)
+    return True
+
+
+def add_case_document(case_id: str, document: dict):
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    existing_case = case_ref.get()
+
+    if not existing_case.exists:
+        return None
+
+    case_ref.update({
+        "documents": firestore.ArrayUnion([document]),
+        "updated_at": datetime.now(timezone.utc),
+    })
+
+    return document
+
+
+def upsert_case_document(case_id: str, document: dict) -> dict | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    existing_case = case_ref.get()
+
+    if not existing_case.exists:
+        return None
+
+    case_data = existing_case.to_dict()
+    documents = case_data.get("documents", [])
+
+    updated_documents = [
+        current_document
+        for current_document in documents
+        if current_document.get("document_name") != document.get("document_name")
+    ]
+
+    updated_documents.append(document)
+
+    document_name = document.get("document_name")
+    updated_missing_documents = case_data.get("missing_documents", [])
+    known_document_names = {
+        *case_data.get("requirements", []),
+        *updated_missing_documents,
+        *[
+            current_document.get("document_name")
+            for current_document in documents
+        ],
+    }
+
+    if (
+        document_name
+        and document_name in known_document_names
+        and document_name not in updated_missing_documents
+    ):
+        updated_missing_documents = [
+            *updated_missing_documents,
+            document_name,
+        ]
+
+    updates = {
+        "documents": updated_documents,
+        "missing_documents": updated_missing_documents,
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    if case_data.get("status") == "ready_for_review":
+        updates["status"] = "waiting_for_documents"
+
+    case_ref.update(updates)
+
+    return document
+
+
+def remove_case_document(case_id: str, document_name: str) -> dict | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    existing_case = case_ref.get()
+
+    if not existing_case.exists:
+        return None
+
+    case_data = existing_case.to_dict()
+    documents = case_data.get("documents", [])
+
+    document_to_remove = next(
+        (
+            current_document
+            for current_document in documents
+            if current_document.get("document_name") == document_name
+        ),
+        None,
+    )
+
+    if document_to_remove is None:
+        return {}
+
+    updated_missing_documents = case_data.get("missing_documents", [])
+
+    if document_name not in updated_missing_documents:
+        updated_missing_documents = [
+            *updated_missing_documents,
+            document_name,
+        ]
+
+    case_ref.update({
+        "documents": [
+            current_document
+            for current_document in documents
+            if current_document.get("document_name") != document_name
+        ],
+        "missing_documents": updated_missing_documents,
+        "status": "waiting_for_documents",
+        "updated_at": datetime.now(timezone.utc),
+    })
+
+    return document_to_remove
+
+
+def update_case_documents_after_validation(
+    case_id: str,
+    validation_results: list[dict],
+) -> dict | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    existing_case = case_ref.get()
+
+    if not existing_case.exists:
+        return None
+
+    case_data = existing_case.to_dict()
+    documents = case_data.get("documents", [])
+    result_by_document_name = {
+        result["document_name"]: result
+        for result in validation_results
+    }
+
+    updated_documents = []
+
+    for document in documents:
+        document_name = document.get("document_name")
+        validation_result = result_by_document_name.get(document_name)
+
+        if validation_result is None:
+            updated_documents.append(document)
+            continue
+
+        updated_documents.append({
+            **document,
+            "status": validation_result["status"],
+            "validation_message": validation_result["validation_message"],
+            "validated_at": validation_result["validated_at"],
+        })
+
+    valid_document_names = {
+        result["document_name"]
+        for result in validation_results
+        if result["status"] == "valid"
+    }
+
+    updated_missing_documents = [
+        document_name
+        for document_name in case_data.get("missing_documents", [])
+        if document_name not in valid_document_names
+    ]
+
+    for result in validation_results:
+        document_name = result["document_name"]
+
+        if (
+            result["status"] == "needs_attention"
+            and document_name
+            and document_name not in updated_missing_documents
+        ):
+            updated_missing_documents.append(document_name)
+
+    updates = {
+        "documents": updated_documents,
+        "missing_documents": updated_missing_documents,
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    if len(updated_missing_documents) == 0:
+        updates["status"] = "ready_for_review"
+    elif case_data.get("status") == "ready_for_review":
+        updates["status"] = "waiting_for_documents"
+
+    case_ref.update(updates)
+
+    updated_case = case_ref.get()
+
+    return updated_case.to_dict()
+
+
+def complete_final_review(case_id: str) -> dict | None:
+    case_ref = db.collection(CASES_COLLECTION).document(case_id)
+
+    document = case_ref.get()
+
+    if not document.exists:
+        return None
+
+    case_data = document.to_dict()
+
+    _verify_case_ready_for_final_review(case_id, case_data)
+
+    case_ref.update({
+        "status": "ready_to_resubmit",
+        "updated_at": datetime.now(timezone.utc),
+    })
+
+    return {
+        "case_id": case_id,
+        "status": "ready_to_resubmit",
+        "message": (
+            "Recovery case passed final review and is ready for resubmission."
+        ),
+    }
+
+
+def _verify_case_ready_for_final_review(
+    case_id: str,
+    case_data: dict,
+) -> None:
+    status = case_data.get("status")
+
+    if status == "ready_to_resubmit":
+        raise FinalReviewError(
+            "Recovery case has already passed final review."
+        )
+
+    if status != "ready_for_review":
+        raise FinalReviewError(
+            "Recovery case is not ready for final review."
+        )
+
+    missing_documents = case_data.get("missing_documents", [])
+
+    if len(missing_documents) > 0:
+        raise FinalReviewError(
+            "Recovery case still has missing documents."
+        )
+
+    documents = case_data.get("documents", [])
+
+    if len(documents) == 0:
+        raise FinalReviewError(
+            "Recovery case has no required recovery documents to review."
+        )
+
+    for recovery_document in documents:
+        document_name = (
+            recovery_document.get("document_name")
+            or "Recovery document"
+        )
+
+        if recovery_document.get("status") != "valid":
+            raise FinalReviewError(
+                f"{document_name} has not passed document validation."
+            )
+
+        stored_file_name = recovery_document.get("stored_file_name")
+
+        if not stored_file_name:
+            raise FinalReviewError(
+                f"{document_name} is missing stored file metadata."
+            )
+
+        file_path = UPLOAD_DIR / case_id / Path(stored_file_name).name
+
+        if not file_path.exists():
+            raise FinalReviewError(
+                f"{document_name} stored file could not be found."
+            )

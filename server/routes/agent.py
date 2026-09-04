@@ -1,0 +1,91 @@
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from auth import get_current_user
+from repath_agent.services.agent_service import (
+    AgentCaseNotFoundError,
+    AgentMessagePersistenceError,
+    AgentSessionLinkError,
+    AgentSessionStoreError,
+    send_agent_message,
+)
+
+
+router = APIRouter(
+    prefix="/api/agent",
+    tags=["agent"],
+)
+
+
+class AgentMessageRequest(BaseModel):
+    message: str
+    session_id: str | None = None
+    case_id: str | None = None
+
+
+class AgentMessageResponse(BaseModel):
+    session_id: str
+    response: str
+
+
+@router.post("/message", response_model=AgentMessageResponse)
+async def message_agent(
+    body: AgentMessageRequest,
+    user=Depends(get_current_user),
+):
+    message = body.message.strip()
+
+    if not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Message cannot be empty.",
+        )
+
+    try:
+        return await send_agent_message(
+            message=message,
+            session_id=body.session_id,
+            case_id=body.case_id,
+            owner_id=user["uid"],
+            owner_email=user.get("email"),
+        )
+
+    except AgentCaseNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Case not found.",
+        ) from error
+
+    except AgentSessionLinkError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to link this agent session to the recovery case.",
+        ) from error
+
+    except AgentSessionStoreError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Agent session storage is not available.",
+        ) from error
+
+    except AgentMessagePersistenceError as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to save this recovery case message.",
+        ) from error
+
+    except Exception as error:
+        print("Agent error:", error)
+
+        error_message = str(error)
+
+        if "RESOURCE_EXHAUSTED" in error_message or "429" in error_message:
+            raise HTTPException(
+                status_code=429,
+                detail="RePath is temporarily at its AI usage limit.",
+            ) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process agent message.",
+        ) from error
