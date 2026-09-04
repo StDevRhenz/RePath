@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from auth import get_current_user
 from config import MAX_DOCUMENT_UPLOAD_SIZE_BYTES, UPLOAD_DIR
 from repath_agent.services.firestore_service import (
@@ -186,6 +187,28 @@ def validate_documents(case_id: str, user=Depends(get_current_user)):
         "case_id": case_id,
         "documents": validation_results,
     }
+
+
+@router.get("/{case_id}/documents/{document_name}/file")
+def get_document_file(case_id: str, document_name: str, user=Depends(get_current_user)):
+    case = get_case(case_id)
+
+    if case is None or case.get("owner_id") != user["uid"]:
+        raise HTTPException(status_code=404, detail="Case not found.")
+
+    document = _find_document(case, document_name)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Uploaded document not found.")
+
+    file_path = _get_document_path(case_id, document)
+    if file_path is None or not file_path.exists():
+        raise HTTPException(status_code=404, detail="Stored file could not be found.")
+
+    return FileResponse(
+        path=file_path,
+        media_type=document.get("content_type") or "application/octet-stream",
+        filename=document.get("original_file_name") or file_path.name,
+    )
 
 
 @router.delete("/{case_id}/documents/{document_name}")
