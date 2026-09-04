@@ -1,21 +1,6 @@
 # RePath
  It explains what went wrong, identifies the required fixes, and helps users prepare for resubmission.
 
-## Features
-
-- Google sign-in with Firebase Authentication
-- Recovery cases with persistent progress and ownership
-- AI-generated recovery steps
-- Document upload, validation, and status tracking
-- Readiness checks before resubmission
-- Case-aware assistant through Ask RePath
-
-## Tech Stack
-
-- Frontend: React, Vite, TypeScript, Tailwind CSS
-- Backend: Python, FastAPI, Google ADK, Gemini
-- Services: Firebase Authentication, Firestore, Google Cloud
-
 ## Prerequisites
 
 - Node.js and npm
@@ -58,14 +43,6 @@ npm run dev
 ```
 
 Frontend URL: `http://localhost:5173`
-
-## Basic Flow
-
-1. Sign in with Google.
-2. Start a recovery case and provide the application feedback.
-3. Review the issues and recovery steps.
-4. Upload or replace the required documents.
-5. Run the readiness check before resubmission.
 
 ## Verification
 
