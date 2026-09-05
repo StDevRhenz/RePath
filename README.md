@@ -59,6 +59,28 @@ Frontend URL: `http://localhost:5173`
 4. Upload or replace the required documents.
 5. Run the RePath readiness check before resubmission.
 
+## Backend API Reference
+
+The backend exposes documented endpoints for cases, agent messages, documents, and account data.
+
+### Case Routes
+
+This view shows the case endpoints for listing cases, reading case data, loading messages, and running a final review.
+
+![RePath case API routes](docs/images/api-routes-cases.png)
+
+### API Schemas
+
+This view shows the request and response schemas used by the RePath API.
+
+![RePath API schemas](docs/images/api-schemas.png)
+
+### Complete API Overview
+
+This view shows the complete route list grouped by cases, agent, documents, and account operations.
+
+![RePath API route overview](docs/images/api-routes-overview.png)
+
 ## Demo Screenshots
 
 ### Landing Page
@@ -157,6 +179,9 @@ This alternate recoveries screenshot shows the empty state before a user has cre
 
 ![Alternate empty recoveries page](docs/images/recoveries-empty-alt.png)
 
+![alt text](image-2.png)
+
+![alt text](image-1.png)
 
 ## Disclaimer
 RePath only analyzes the information and documents provided by the user and indicates readiness for resubmission; it does not approve, verify, accept, or submit applications to government agencies.
