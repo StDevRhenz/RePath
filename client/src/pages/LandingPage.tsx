@@ -46,10 +46,10 @@ export function LandingPage() {
         >
           <p className="mb-6 text-sm font-normal text-zinc-500">For rejected, incomplete, or stuck applications</p>
           <h1 className="max-w-full whitespace-nowrap text-[1.72rem] font-light sm:text-5xl lg:text-6xl">
-            Get your application back on track.
+           Make your application stronger.
           </h1>
           <p className="mt-7 max-w-xl text-base font-light leading-7 text-zinc-500 sm:text-lg">
-            RePath tells you exactly why your application was rejected or stuck, what documents to fix, and walks you through resubmitting it.
+            RePath helps you understand why your application was rejected or delayed, what to fix, and what to do next.
           </p>
 
           <div className="mt-10 flex flex-col gap-3 sm:flex-row">

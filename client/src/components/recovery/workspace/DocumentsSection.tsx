@@ -494,7 +494,7 @@ function getStatusLabel(
 
   switch (document?.status) {
     case "valid":
-      return "Accepted";
+      return "Verified by RePath checks";
 
     case "needs_attention":
       return "Needs a fix";

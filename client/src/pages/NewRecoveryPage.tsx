@@ -12,16 +12,22 @@ import {
   sendAgentMessage,
 } from "@/services/agentApi";
 import { RecoveryConversation } from "@/components/recovery/RecoveryConversation";
+import { DEMO_INPUT } from "@/data/demoRecovery";
+import { DEMO_MODE } from "@/lib/demoMode";
 
 export function NewRecoveryPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(DEMO_MODE ? DEMO_INPUT : "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [agentResponse, setAgentResponse] = useState("");
   const [initialMessage, setInitialMessage] = useState("");
+
+  function loadDemoRecovery() {
+    setDescription(DEMO_INPUT);
+  }
 
 
   async function handleContinue() {
@@ -174,6 +180,12 @@ export function NewRecoveryPage() {
               placeholder="My scholarship application was rejected because..."
               className="min-h-40 resize-none bg-white font-light leading-6"
             />
+
+            {DEMO_MODE && !description && (
+              <button type="button" onClick={loadDemoRecovery} className="mt-3 text-left text-xs font-light text-indigo-700 hover:text-indigo-900">
+                Load RG Brew Corner demo case
+              </button>
+            )}
 
             {error && (
               <p className="mt-4 text-sm font-light text-red-600">

@@ -1,4 +1,5 @@
 export const caseStatusLabels: Record<string, string> = {
+  action_required: "Action required",
   recovering: "Recovery in progress",
   waiting_for_documents: "Documents needed",
   ready_for_review: "Ready for review",
@@ -11,6 +12,8 @@ export function getCaseStatusLabel(status: string) {
 
 export function getRecoveryProgress(status: string) {
   switch (status) {
+    case "action_required":
+      return 25;
     case "recovering":
       return 25;
 

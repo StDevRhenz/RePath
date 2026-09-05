@@ -1,7 +1,9 @@
 import { API_URL } from "@/lib/apiConfig";
 import { authFetch } from "@/lib/authFetch";
+import { DEMO_MODE } from "@/lib/demoMode";
+import { DEMO_CASE_ID, getDemoAgentResponse, getDemoMessages } from "@/data/demoRecovery";
 
-export const USE_MOCK_AGENT = true;
+export const USE_MOCK_AGENT = DEMO_MODE;
 
 export interface RecoveryMessage {
   message_id?: string;
@@ -40,7 +42,7 @@ export async function sendAgentMessage(
   if (USE_MOCK_AGENT) {
     await new Promise((resolve) => setTimeout(resolve, 1200));
 
-    return mockAgentResponse(message);
+    return { session_id: "demo-session-rg-brew-corner", is_mock: true, response: getDemoAgentResponse(message) };
   }
 
   const response = await authFetch(`${API_URL}/api/agent/message`, {
@@ -68,6 +70,7 @@ export async function sendAgentMessage(
 export async function getCaseMessages(
   caseId: string
 ): Promise<CaseMessagesResponse> {
+  if (USE_MOCK_AGENT && caseId === DEMO_CASE_ID) return { case_id: caseId, messages: getDemoMessages() };
   const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/messages`
   );
@@ -80,20 +83,6 @@ export async function getCaseMessages(
   }
 
   return response.json();
-}
-
-function mockAgentResponse(
-  _message: string
-): AgentMessageResponse {
-  return {
-    session_id: "mock-session-local-only",
-    is_mock: true,
-    response: `
-### Recovery Analysis
-
-I can help you review this recovery, understand the next steps, or prepare wording for resubmission.
-    `.trim(),
-  };
 }
 
 async function getErrorMessage(

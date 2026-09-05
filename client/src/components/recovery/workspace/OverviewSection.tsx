@@ -140,6 +140,24 @@ export function OverviewSection({
               </>
             )}
           </Button>
+        ) : recoveryCase.status === "ready_to_resubmit" ? (
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Button
+              onClick={() => onSectionChange("documents")}
+              variant="outline"
+              className="h-10 px-4 font-normal"
+            >
+              Review corrections
+              <FileText className="size-4" />
+            </Button>
+            <Button
+              onClick={() => window.location.assign("/recoveries")}
+              variant="ghost"
+              className="h-10 px-4 font-normal text-zinc-500"
+            >
+              View recovery history
+            </Button>
+          </div>
         ) : recoveryCase.status !== "ready_to_resubmit" ? (
           <Button
             onClick={() => onSectionChange("recovery")}

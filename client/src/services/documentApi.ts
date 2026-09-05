@@ -1,6 +1,8 @@
 import type { CaseDocument, CaseDocumentStatus } from "@/services/caseApi";
 import { API_URL } from "@/lib/apiConfig";
 import { authFetch, getAuthHeaders } from "@/lib/authFetch";
+import { DEMO_MODE } from "@/lib/demoMode";
+import { DEMO_CASE_ID, getDemoCase, removeDemoDocument, updateDemoDocument } from "@/data/demoRecovery";
 
 export interface UploadDocumentResponse {
   case_id: string;
@@ -36,6 +38,14 @@ export async function uploadCaseDocument(
   file: File,
   onProgress?: (progress: number) => void
 ): Promise<UploadDocumentResponse> {
+  if (DEMO_MODE && caseId === DEMO_CASE_ID) {
+    onProgress?.(20);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    onProgress?.(100);
+    updateDemoDocument(documentName, file.name, file.type || "application/pdf");
+    const document = getDemoCase().documents.find((item) => item.document_name === documentName)!;
+    return { case_id: caseId, document_name: documentName, original_file_name: file.name, stored_file_name: file.name, content_type: file.type || "application/pdf", status: "uploaded", validation_message: document.validation_message ?? "Verified by RePath checks", validated_at: null };
+  }
   if (onProgress) {
     const authHeaders = await getAuthHeaders();
     const formData = new FormData();
@@ -96,6 +106,7 @@ export async function uploadCaseDocument(
 }
 
 export async function getCaseDocumentFile(caseId: string, documentName: string): Promise<Blob> {
+  if (DEMO_MODE && caseId === DEMO_CASE_ID) return new Blob([`RePath demo document: ${documentName}`], { type: "application/pdf" });
   const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/documents/${encodeURIComponent(documentName)}/file`
   );
@@ -108,6 +119,7 @@ export async function getCaseDocumentFile(caseId: string, documentName: string):
 export async function validateCaseDocuments(
   caseId: string
 ): Promise<ValidateDocumentsResponse> {
+  if (DEMO_MODE && caseId === DEMO_CASE_ID) return { case_id: caseId, documents: getDemoCase().documents.filter((document) => document.status === "valid" || document.status === "needs_attention") as ValidateDocumentsResponse["documents"] };
   const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/documents/validate`,
     {
@@ -128,6 +140,7 @@ export async function removeCaseDocument(
   caseId: string,
   documentName: string
 ): Promise<RemoveDocumentResponse> {
+  if (DEMO_MODE && caseId === DEMO_CASE_ID) { removeDemoDocument(documentName); return { case_id: caseId, document_name: documentName, status: "removed" }; }
   const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/documents/${encodeURIComponent(
       documentName

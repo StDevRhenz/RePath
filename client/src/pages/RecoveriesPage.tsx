@@ -73,7 +73,7 @@ export function RecoveriesPage() {
       <section className="mx-auto max-w-5xl px-6 py-12 lg:px-8 lg:py-16">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <p className="text-sm font-normal text-zinc-500">Home</p>
-          <h1 className="mt-3 text-4xl font-light tracking-[-0.035em] sm:text-5xl">Pick up where you left off</h1>
+          <h1 className="mt-3 text-4xl font-light tracking-[-0.035em] sm:text-5xl">Continue your application</h1>
           <p className="mt-4 max-w-xl font-light leading-7 text-zinc-500">Open an application you’re working on or start a new one.</p>
         </motion.div>
 
@@ -97,7 +97,15 @@ export function RecoveriesPage() {
               <button key={recovery.case_id} onClick={() => navigate(`/cases/${recovery.case_id}`)} aria-label={`Open recovery: ${recovery.title}`} className="group flex min-h-16 w-full items-center justify-between gap-6 py-6 text-left transition-colors hover:bg-white">
                 <span className="min-w-0">
                   <span className="block truncate text-lg font-normal">{recovery.title}</span>
+                  {recovery.application_type && (
+                    <span className="mt-1 block text-sm font-light text-zinc-500">{recovery.application_type}</span>
+                  )}
                   <span className="mt-2 block text-sm font-light text-zinc-500">{getCaseStatusLabel(recovery.status)}</span>
+                  {recovery.issues_count !== undefined && recovery.status !== "ready_to_resubmit" && (
+                    <span className="mt-1 block text-xs font-light text-zinc-400">
+                      {recovery.issues_count} issues identified · {recovery.replacement_count} documents need replacement
+                    </span>
+                  )}
                   {recovery.updated_at && (
                     <span className="mt-1 block text-xs font-light text-zinc-400">
                       Updated {formatDate(recovery.updated_at)}
