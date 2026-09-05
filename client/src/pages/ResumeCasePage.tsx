@@ -6,6 +6,8 @@ import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCase } from "@/services/caseApi";
+import { DEMO_CASE_ID } from "@/data/demoRecovery";
+import { DEMO_MODE } from "@/lib/demoMode";
 
 export function ResumeCasePage() {
   const navigate = useNavigate();
@@ -99,6 +101,12 @@ export function ResumeCasePage() {
               placeholder="Enter your case ID"
               className="h-12 bg-white font-light"
             />
+
+            {DEMO_MODE && (
+              <button type="button" onClick={() => setCaseId(DEMO_CASE_ID)} className="mt-3 text-xs font-light text-indigo-700 hover:text-indigo-900">
+                Use demo case ID: {DEMO_CASE_ID}
+              </button>
+            )}
 
             {error && (
               <p className="mt-3 text-sm font-light text-red-600">

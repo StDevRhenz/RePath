@@ -1,5 +1,7 @@
 import { API_URL } from "@/lib/apiConfig";
 import { authFetch } from "@/lib/authFetch";
+import { DEMO_MODE } from "@/lib/demoMode";
+import { DEMO_CASE_ID, finalizeDemoCase, getDemoCase, getDemoCases } from "@/data/demoRecovery";
 
 export type CaseDocumentStatus =
   | "uploaded"
@@ -28,6 +30,13 @@ export interface RecoveryCase {
   recovery_steps: string[];
   documents: CaseDocument[];
   agent_session_id?: string | null;
+  applicant_name?: string;
+  business_name?: string;
+  application_type?: string;
+  issues_count?: number;
+  replacement_count?: number;
+  submitted_at?: string;
+  last_reviewed_at?: string;
 }
 
 export interface FinalReviewResponse {
@@ -41,6 +50,7 @@ export interface MyCasesResponse {
 }
 
 export async function getCase(caseId: string): Promise<RecoveryCase> {
+  if (DEMO_MODE && caseId === DEMO_CASE_ID) return getDemoCase();
   const response = await authFetch(`${API_URL}/api/cases/${caseId}`);
 
   if (!response.ok) {
@@ -51,6 +61,7 @@ export async function getCase(caseId: string): Promise<RecoveryCase> {
 }
 
 export async function getMyCases(): Promise<MyCasesResponse> {
+  if (DEMO_MODE) return getDemoCases();
   const response = await authFetch(`${API_URL}/api/cases`);
 
   if (!response.ok) {
@@ -65,6 +76,7 @@ export async function getMyCases(): Promise<MyCasesResponse> {
 export async function finalizeRecoveryCase(
   caseId: string
 ): Promise<FinalReviewResponse> {
+  if (DEMO_MODE && caseId === DEMO_CASE_ID) return finalizeDemoCase();
   const response = await authFetch(
     `${API_URL}/api/cases/${caseId}/final-review`,
     {

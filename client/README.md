@@ -1,5 +1,18 @@
 # React + TypeScript + Vite
 
+## Portfolio demo
+
+The frontend runs in local demo mode by default. It uses the RG Brew Corner recovery case and browser-local document/review state, while Google sign-in remains connected to Firebase. Demo mode does not call the AI agent or backend APIs. To explicitly enable it, add `VITE_DEMO_MODE=true` to `.env`.
+
+Run it with:
+
+```bash
+npm install
+npm run dev
+```
+
+To use the real Firebase/API flow, set `VITE_DEMO_MODE=false` and provide the existing Firebase/API environment variables.
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:
