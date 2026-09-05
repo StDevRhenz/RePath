@@ -179,9 +179,6 @@ This alternate recoveries screenshot shows the empty state before a user has cre
 
 ![Alternate empty recoveries page](docs/images/recoveries-empty-alt.png)
 
-![alt text](image-2.png)
-
-![alt text](image-1.png)
 
 ## Disclaimer
 RePath only analyzes the information and documents provided by the user and indicates readiness for resubmission; it does not approve, verify, accept, or submit applications to government agencies.
